@@ -1,8 +1,11 @@
 'use strict';
 /*
- * Static checks of index.html (slice F2). No browser and no DOM library: the page is read as text,
- * and its inline scripts are compiled with node:vm to prove they parse.
+ * Tests of index.html (slices F2 and F3).
+ * Static checks read the page as text and compile its inline scripts with node:vm.
+ * "run" tests execute the real page scripts against a small hand-written fake DOM (no browser, no jsdom,
+ * no network): a fake fetch, a fake clock and an in-memory storage are injected.
  * Run (Korean): node --test test/page.test.js
+ * Fixtures use fake values only (phones 010-0000-xxxx, name 테스트참가자, staff PIN 7391 inside this file only).
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -11,7 +14,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const DEFAULTS = require('../defaults.js');
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const ROOT = path.join(__dirname, '..');
+const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
 // Inline scripts only: <script> tags without src, skipping JSON data blocks.
 function inlineScripts(source) {
@@ -24,8 +28,10 @@ function inlineScripts(source) {
   return out;
 }
 const scripts = inlineScripts(html);
+const app = scripts[scripts.length - 1];
 const markup = html.replace(/<script\b[\s\S]*?<\/script>/g, '');
 
+// ============================================================================================ static: F2
 test('F2 page: script tags load defaults.js and quiz-core.js with the same ?v= build', () => {
   const d = html.match(/<script\s+src="defaults\.js\?v=([^"]+)"\s*><\/script>/);
   const c = html.match(/<script\s+src="quiz-core\.js\?v=([^"]+)"\s*><\/script>/);
@@ -66,13 +72,10 @@ test('F2 page: no google.script, iframe, script.google.com navigation, pushState
   mutations.forEach((re) => assert.ok(!re.test(html), 'the page must not change the URL: ' + re));
   // Demo must not touch the real storage keys or the network: every storage call passes the prefix options,
   // and the real api is only created when demo is off.
-  const app = scripts[scripts.length - 1];
   const storageCalls = app.match(/Q\.(loadState|saveState|resetForEvent|submitWithPending|getDeviceId)\([^)]*\)/g) || [];
   assert.ok(storageCalls.length >= 5, 'expected the storage calls to be found');
-  storageCalls.forEach((c) => assert.ok(/\bSO\b/.test(c),'storage call without the prefix options: ' + c));
+  storageCalls.forEach((c) => assert.ok(/\bSO\b/.test(c), 'storage call without the prefix options: ' + c));
   assert.ok(/demo \? Q\.createDemoApi\(\) : Q\.createApi\(/.test(app), 'demo must use the in-memory api');
-  assert.strictEqual((app.match(/api\.config\(\)/g) || []).length, 1, 'api.config() is called in exactly one place');
-  assert.ok(/if \(demo\) \{ onConfig\(\{ ok: true, data: DEMO_CONFIG \}\); \} else \{ api\.config\(\)/.test(app), 'demo must not call api.config()');
   // The staff PIN value never appears here, and no Config key is needed on this page.
   assert.strictEqual(html.indexOf('246810'), -1);
 });
@@ -105,5 +108,496 @@ test('F2 page: inline script parses (vm.Script) and uses no ?. or ??', () => {
     assert.ok(!/catch\s*\{/.test(code), 'optional catch binding (ES2019) found in inline script ' + i);
     assert.ok(!/\{\s*\.\.\./.test(code), 'object spread (ES2018) found in inline script ' + i);
     assert.ok(!/\*\*/.test(code), '** found in inline script ' + i);
+    assert.ok(!/\(\?<[=!a-zA-Z]/.test(code), 'lookbehind or named group (ES2018 regex) found in inline script ' + i);
+    assert.ok(!/\\p\{/.test(code), 'unicode property escape (ES2018 regex) found in inline script ' + i);
   });
+});
+
+// ============================================================================================ static: F2 review fixes
+test('F2r page: every id the script binds exists in the markup', () => {
+  const ids = new Set();
+  let m;
+  const reDollar = /\$\('([^']+)'\)/g;
+  while ((m = reDollar.exec(app)) !== null) { ids.add(m[1]); }
+  const reGet = /getElementById\('([^']+)'\)/g;
+  while ((m = reGet.exec(app + scripts[0])) !== null) { ids.add(m[1]); }
+  [/var PAGES = \[([^\]]*)\]/, /var ids = \{([^}]*)\}/].forEach((re) => {
+    const lit = app.match(re);
+    assert.ok(lit, 'expected to find ' + re);
+    const reStr = /'([a-z][a-z0-9-]*)'/g;
+    let s;
+    while ((s = reStr.exec(lit[1])) !== null) { if (s[1].indexOf('-') !== -1) { ids.add(s[1]); } }
+  });
+  assert.ok(ids.size > 40, 'expected the page to bind many ids, found ' + ids.size);
+  ids.forEach((id) => assert.ok(markup.indexOf(' id="' + id + '"') !== -1, 'script binds #' + id + ' but the markup has no such id'));
+});
+
+test('F2r page: comments are English only and the page declares a dark color scheme', () => {
+  const htmlComments = html.match(/<!--[\s\S]*?-->/g) || [];
+  htmlComments.forEach((c) => assert.ok(!/[\u3131-\uD79D]/.test(c), 'Korean in an HTML comment: ' + c.slice(0, 60)));
+  scripts.forEach((code, i) => {
+    code.split('\n').forEach((line) => {
+      const at = line.search(/(^|\s)\/\//);
+      if (at !== -1) { assert.ok(!/[\u3131-\uD79D]/.test(line.slice(at)), 'Korean in a script comment (script ' + i + '): ' + line.trim()); }
+    });
+  });
+  assert.ok(/<meta name="color-scheme" content="dark">/.test(html));
+});
+
+test('F2r page: boot copy, phone input and answer input attributes are pinned', () => {
+  assert.ok(/<section[^>]*id="boot-card"[^>]*>\s*<p>잠시 후 새로고침해 주세요\. 계속 안 되면 부스 스태프에게 말씀해 주세요\.<\/p>/.test(markup));
+  const phone = markup.match(/<input[^>]*data-testid="field-phone"[^>]*>/)[0];
+  ['type="tel"', 'inputmode="numeric"', 'placeholder="010-1234-5678"'].forEach((a) => assert.ok(phone.indexOf(a) !== -1, 'phone input needs ' + a));
+  const answer = markup.match(/<input[^>]*data-testid="q-answer"[^>]*>/)[0];
+  ['autocapitalize="off"', 'autocorrect="off"', 'spellcheck="false"', 'placeholder="정답을 입력해 주세요"'].forEach((a) => assert.ok(answer.indexOf(a) !== -1, 'answer input needs ' + a));
+  assert.ok(markup.indexOf('체크하면 정보 입력 없이 퀴즈를 풀 수 있어요.') !== -1, 'card checkbox subline');
+});
+
+test('F2r page: async callbacks are guarded and both global error handlers are registered', () => {
+  assert.ok(/addEventListener\('error'/.test(scripts[0]) && /addEventListener\('unhandledrejection'/.test(scripts[0]));
+  // Every promise callback that touches the page goes through guard().
+  const thens = app.match(/\.then\((guard\()?function|\.then\(guard\(\w+\)\)/g) || [];
+  assert.ok(thens.length >= 4, 'expected to find the promise callbacks');
+  thens.forEach((t) => assert.ok(/guard/.test(t), 'a .then callback is not wrapped in guard(): ' + t));
+});
+
+// ============================================================================================ static: F3
+test('F3 page: ticket and staff hooks exist (ticket-root, ticket-no, ticket-issued, ticket-status, ticket-clock, staff-toggle, staff-pin, staff-redeem, staff-result)', () => {
+  ['ticket-root', 'ticket-no', 'ticket-issued', 'ticket-status', 'ticket-clock', 'staff-toggle', 'staff-pin', 'staff-redeem', 'staff-result']
+    .forEach((h) => assert.ok(markup.indexOf('data-testid="' + h + '"') !== -1, 'missing data-testid="' + h + '"'));
+  assert.ok(/id="ticket-slot"[^>]*data-testid="ticket-root"/.test(markup), '#ticket-slot carries ticket-root');
+  ['행운의 룰렛 응모권', '응모권은 1인 1회만 사용할 수 있어요.', '스태프 확인', '룰렛 완료 처리']
+    .forEach((s) => assert.ok(markup.indexOf(s) !== -1, 'missing copy: ' + s));
+  const clockRule = html.match(/\.ticket \.clock \{[^}]*\}/);
+  assert.ok(clockRule && clockRule[0].indexOf('tabular-nums') !== -1, 'the clock needs tabular-nums');
+});
+
+test('F3 page: staff PIN input is password/numeric/autocomplete off and no storage write references the PIN', () => {
+  const pin = markup.match(/<input[^>]*data-testid="staff-pin"[^>]*>/)[0];
+  ['type="password"', 'inputmode="numeric"', 'autocomplete="off"'].forEach((a) => assert.ok(pin.indexOf(a) !== -1, 'PIN input needs ' + a));
+  app.split('\n').forEach((line) => {
+    if (/setItem|saveState|localStorage|sessionStorage|persist\(|location\.|history\./.test(line)) {
+      assert.ok(!/pin/i.test(line), 'a storage or URL line mentions the PIN: ' + line.trim());
+    }
+  });
+  assert.ok(!/state\.(pin|staffPin)|ticket\.pin/i.test(app), 'the PIN must not be put on state or on the stored ticket');
+  // The PIN is read once, cleared at once, and only ever passed to api.redeem.
+  assert.strictEqual((app.match(/\$\('staff-pin'\)\.value/g) || []).length, 2, 'read once and cleared once');
+  assert.strictEqual((app.match(/pin: pin/g) || []).length, 1, 'the PIN is placed only in the redeem request body');
+});
+
+// ============================================================================================ fake DOM
+const VOID = new Set(['meta', 'link', 'input', 'br', 'img', 'hr']);
+class El {
+  constructor(tag, attrs) {
+    this.tagName = tag; this.attrs = Object.assign({}, attrs || {}); this.children = []; this.parent = null; this._text = '';
+    this.id = this.attrs.id || ''; this.hidden = 'hidden' in this.attrs; this.value = this.attrs.value || ''; this.checked = false;
+    this.disabled = 'disabled' in this.attrs; this.readOnly = false; this.className = this.attrs.class || ''; this.listeners = {};
+    this.type = this.attrs.type || (tag === 'button' ? 'submit' : ''); this.focused = false;
+    const self = this;
+    this.classList = {
+      add(c) { const s = new Set(self.className.split(/\s+/).filter(Boolean)); s.add(c); self.className = Array.from(s).join(' '); },
+      remove(c) { self.className = self.className.split(/\s+/).filter((x) => x && x !== c).join(' '); },
+      toggle(c, on) { if (on) { this.add(c); } else { this.remove(c); } },
+      contains(c) { return self.className.split(/\s+/).indexOf(c) !== -1; }
+    };
+  }
+  appendChild(c) { c.parent = this; this.children.push(c); return c; }
+  set textContent(v) { this.children = []; this._text = String(v); }
+  get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); }
+  set innerHTML(v) { this.children = []; this._text = ''; }
+  setAttribute(k, v) { this.attrs[k] = String(v); }
+  getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
+  addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
+  focus() { this.focused = true; }
+  all() { const out = []; (function walk(n) { n.children.forEach((c) => { out.push(c); walk(c); }); })(this); return out; }
+  querySelectorAll(sel) { const tags = sel.split(',').map((s) => s.trim()); return this.all().filter((e) => tags.indexOf(e.tagName) !== -1); }
+  querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
+  get visible() { let n = this; while (n) { if (n.hidden) { return false; } n = n.parent; } return true; }
+}
+function buildDom(source) {
+  const body = source.replace(/<!--[\s\S]*?-->/g, '').replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<style>[\s\S]*?<\/style>/, '');
+  const root = new El('root');
+  const stack = [root];
+  const re = /<(\/?)([a-zA-Z0-9]+)((?:[^>"']|"[^"]*"|'[^']*')*)>|([^<]+)/g;
+  let m;
+  while ((m = re.exec(body)) !== null) {
+    if (m[4] !== undefined) { const t = m[4].replace(/\s+/g, ' '); if (t.trim()) { stack[stack.length - 1]._text += t; } continue; }
+    const tag = m[2].toLowerCase();
+    if (m[1]) { if (!VOID.has(tag) && stack.length > 1) { stack.pop(); } continue; }
+    const attrs = {};
+    const ar = /([\w-]+)(?:="([^"]*)"|='([^']*)')?/g;
+    let a;
+    while ((a = ar.exec(m[3])) !== null) { attrs[a[1]] = a[2] !== undefined ? a[2] : (a[3] !== undefined ? a[3] : ''); }
+    const el = new El(tag, attrs);
+    stack[stack.length - 1].appendChild(el);
+    if (!VOID.has(tag)) { stack.push(el); }
+  }
+  return root;
+}
+const settle = async () => { for (let i = 0; i < 20; i++) { await new Promise((r) => setImmediate(r)); } };
+function makeStorage(initial) {
+  const map = new Map(Object.entries(initial || {}));
+  return { map, getItem: (k) => (map.has(k) ? map.get(k) : null), setItem: (k, v) => { map.set(k, String(v)); }, removeItem: (k) => { map.delete(k); } };
+}
+function makeClock() {
+  const c = { now: 1760000000000, timers: new Map(), nextId: 1 };
+  c.set = (fn, ms, every) => { const id = c.nextId++; c.timers.set(id, { at: c.now + ms, fn, every: every ? ms : 0 }); return id; };
+  c.clear = (id) => { c.timers.delete(id); };
+  c.advance = async (ms) => {
+    const target = c.now + ms;
+    await settle();
+    for (;;) {
+      let best = null;
+      for (const [id, t] of c.timers) { if (t.at <= target && (!best || t.at < best.t.at)) { best = { id, t }; } }
+      if (!best) { break; }
+      c.now = Math.max(c.now, best.t.at);
+      if (best.t.every) { best.t.at += best.t.every; } else { c.timers.delete(best.id); }
+      best.t.fn();
+      await settle();
+    }
+    c.now = target;
+    await settle();
+  };
+  return c;
+}
+function fireEl(el, type) {
+  const ev = { type, target: el, preventDefault() {}, stopPropagation() {} };
+  for (let n = el; n; n = n.parent) {
+    if (typeof n['on' + type] === 'function') { n['on' + type](ev); }
+    (n.listeners[type] || []).forEach((fn) => fn(ev));
+    if (type === 'click' || type === 'change') { break; }
+  }
+}
+// opts: {search, local, session, fetch, noCore, clock}
+function boot(opts) {
+  const o = opts || {};
+  const root = buildDom(html);
+  const byId = {};
+  root.all().forEach((e) => { if (e.id) { byId[e.id] = e; } });
+  const clock = o.clock || makeClock();
+  const local = o.local || makeStorage();
+  const session = o.session || makeStorage();
+  const FDate = class extends Date { constructor(...a) { if (a.length) { super(...a); } else { super(clock.now); } } static now() { return clock.now; } };
+  const winListeners = {};
+  const doc = {
+    getElementById: (id) => byId[id] || null,
+    createElement: (t) => new El(t),
+    querySelectorAll: (sel) => (sel === '.page' ? root.all().filter((e) => e.classList.contains('page')) : [])
+  };
+  const win = {
+    location: { search: o.search || '', protocol: 'https:', host: 'localhost:8765' }, scrollTo() {}, localStorage: local, sessionStorage: session,
+    addEventListener: (t, fn) => { (winListeners[t] = winListeners[t] || []).push(fn); }
+  };
+  const ctx = {
+    window: win, document: doc, console, Date: FDate, Math, JSON, Object, Array, String, Number, Promise, Uint8Array, RegExp, Error, TypeError,
+    encodeURIComponent, parseInt, isNaN, setTimeout: (fn, ms) => clock.set(fn, ms), clearTimeout: clock.clear,
+    setInterval: (fn, ms) => clock.set(fn, ms, true), clearInterval: clock.clear,
+    crypto: require('node:crypto').webcrypto, fetch: o.fetch, AbortController
+  };
+  win.window = win; win.document = doc; win.crypto = ctx.crypto;
+  vm.createContext(ctx);
+  const sre = /<script\b([^>]*)>([\s\S]*?)<\/script>/g;
+  let m;
+  while ((m = sre.exec(html)) !== null) {
+    const src = /src="([^"?]+)/.exec(m[1]);
+    if (src) {
+      if (o.noCore && src[1] === 'quiz-core.js') { continue; }
+      vm.runInContext(fs.readFileSync(path.join(ROOT, src[1]), 'utf8'), ctx, { filename: src[1] });
+    } else {
+      vm.runInContext(m[2], ctx, { filename: 'index.html' });
+    }
+  }
+  return {
+    byId, clock, local, session, win,
+    click(el) {
+      if (el.disabled) { return; }
+      fireEl(el, 'click');
+      if (el.tagName === 'button' && el.type === 'submit') { let f = el.parent; while (f && f.tagName !== 'form') { f = f.parent; } if (f) { fireEl(f, 'submit'); } }
+    },
+    type(el, v) { el.value = v; fireEl(el, 'input'); },
+    check(el, v) { el.checked = v; fireEl(el, 'input'); fireEl(el, 'change'); },
+    fireWin(type, ev) { (winListeners[type] || []).forEach((fn) => fn(ev)); },
+    vis(id) { return byId[id].visible; },
+    page() { return ['p-landing', 'p-info', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'].filter((p) => byId[p].visible); },
+    text(id) { return byId[id].textContent; },
+    advance: clock.advance
+  };
+}
+
+// ---- fixtures
+const env = (data) => JSON.stringify({ ok: true, apiVersion: 3, serverMs: 5, data });
+const errEnv = (code, retryable) => JSON.stringify({ ok: false, apiVersion: 3, serverMs: 5, code, message: 'x', retryable: !!retryable });
+const mkTicket = (n, extra) => Object.assign({ ticketId: 'tid-' + n + '-aaaaaaaaaaaaaaaa', ticketToken: 'tok-' + n + '-bbbbbbbbbbbbbbbb', ticketNo: n,
+  ticketLabel: 'No. ' + String(n).padStart(3, '0'), eventId: 'a-day-2026', entryType: 'card', issuedAt: '2026-10-14T06:03:00.000Z', issuedLabel: '15:03',
+  redeemed: false, redeemedAt: '', redeemedLabel: '' }, extra || {});
+const cfgData = (extra) => Object.assign({ eventId: 'a-day-2026', eventName: 'Valen 행운퀴즈', registrationOpen: true, infoPathReady: true, contentVersion: 'v1', contentReady: true,
+  questions: [{ id: 'q1', order: 1, type: 'text', title: '서버 질문', hint: '서버힌트', options: [], imageA: '', imageB: '', captionA: '', captionB: '', accepted: ['정답'], correct: '', explanation: '설명입니다' }],
+  consent: { version: 'cv1', collectedItems: '수집 항목: 테스트', requiredDetail: '필수 안내', marketingDetail: '', privacyNoticeUrl: '' } }, extra || {});
+function fakeFetch(handler) {
+  const calls = [];
+  const f = (url, init) => {
+    calls.push({ url, init });
+    let r;
+    try { r = handler(url, init, calls); } catch (e) { return Promise.reject(e); }
+    return r instanceof Promise ? r : Promise.resolve({ text: () => Promise.resolve(r) });
+  };
+  f.calls = calls;
+  f.posts = (action) => calls.filter((c) => c.init.method === 'POST' && JSON.parse(c.init.body).action === action).map((c) => JSON.parse(c.init.body));
+  return f;
+}
+const STORE_KEY = 'valen-quiz:v3';
+function storedState(ticket, extra) {
+  return JSON.stringify(Object.assign({ v: 3, savedAt: 1760000000000, eventId: 'a-day-2026', stage: 'ticket', entryType: 'card', answers: {}, qIndex: 0, ticket }, extra || {}));
+}
+const PIN = '7391';
+// Card path up to the saving screen (the question is answered, the ticket button is tapped).
+async function cardPathToTicket(h) {
+  h.click(h.byId['landing-start']); await settle();
+  h.check(h.byId['card-skip'], true); h.click(h.byId['info-next']); await settle();
+  h.type(h.byId['q-answer'], '정답'); h.click(h.byId['q-confirm']); await settle();
+  h.click(h.byId['q-next']); await settle();
+}
+
+// ============================================================================================ run: F2 flows
+test('F2r run: demo card path reaches the ticket with no network call and only demo: keys', async () => {
+  const f = fakeFetch(() => { throw new Error('the network must not be touched in demo'); });
+  const h = boot({ search: '?demo=1', fetch: f });
+  await settle();
+  assert.deepStrictEqual(h.page(), ['p-landing']);
+  assert.strictEqual(h.vis('demo-badge'), true);
+  await cardPathToTicket(h);
+  assert.deepStrictEqual(h.page(), ['p-ticket']);
+  assert.strictEqual(h.text('ticket-no'), 'No. 001');
+  assert.strictEqual(f.calls.length, 0);
+  assert.strictEqual(h.local.map.size, 0, 'the real storage is untouched');
+  assert.deepStrictEqual(Array.from(h.session.map.keys()).filter((k) => !k.startsWith('demo:')), []);
+});
+
+test('F2r run: the info path blocks without name, phone and consent, with the exact copy', async () => {
+  const h = boot({ search: '?demo=1' });
+  await settle();
+  h.click(h.byId['landing-start']); await settle();
+  h.click(h.byId['info-next']); await settle();
+  assert.strictEqual(h.text('info-error'), '이름과 휴대폰 번호를 입력해 주세요.');
+  h.type(h.byId['field-name'], '테스트참가자'); h.type(h.byId['field-phone'], '010-0000-0001');
+  h.click(h.byId['info-next']); await settle();
+  assert.strictEqual(h.text('info-error'), '개인정보 수집·이용에 동의해야 참여할 수 있어요.');
+  h.type(h.byId['field-name'], 'ㄱ'.repeat(41));
+  h.check(h.byId['consent-required'], true);
+  h.click(h.byId['info-next']); await settle();
+  assert.strictEqual(h.text('info-error'), '입력한 내용이 너무 길어요. 줄여서 다시 입력해 주세요.');
+  h.type(h.byId['field-name'], '테스트참가자');
+  h.click(h.byId['info-next']); await settle();
+  assert.deepStrictEqual(h.page(), ['p-quiz']);
+});
+
+test('F2r run: no consent text focuses the card checkbox, and a closed registration is not pre-checked on the landing', async () => {
+  const f = fakeFetch((url, init) => {
+    if (init.method === 'GET') { return env(cfgData({ infoPathReady: false, registrationOpen: false })); }
+    return errEnv('REGISTRATION_CLOSED', false);
+  });
+  const h = boot({ fetch: f });
+  await settle();
+  h.click(h.byId['landing-start']); await settle();
+  assert.deepStrictEqual(h.page(), ['p-info'], 'the landing lets the person start whatever the config says');
+  h.click(h.byId['info-next']); await settle();
+  assert.strictEqual(h.byId['card-skip'].focused, true);
+  assert.strictEqual(h.byId['consent-required'].focused, false);
+  h.check(h.byId['card-skip'], true); h.click(h.byId['info-next']); await settle();
+  h.type(h.byId['q-answer'], 'a'); h.click(h.byId['q-confirm']); await settle();
+  h.click(h.byId['q-next']); await settle();
+  assert.deepStrictEqual(h.page(), ['p-error']);
+  assert.strictEqual(h.byId['p-error'].getAttribute('data-error-code'), 'REGISTRATION_CLOSED');
+});
+
+test('F2r run: offline saving retries with one body; a manual retry after exhaustion stores the ticket', async () => {
+  let online = false;
+  const f = fakeFetch((url, init) => {
+    if (!online) { throw new TypeError('offline'); }
+    return init.method === 'GET' ? env(cfgData()) : env({ ticket: mkTicket(7), repeated: false, existing: '', timing: {} });
+  });
+  const h = boot({ fetch: f });
+  await settle();
+  h.click(h.byId['landing-start']); await settle();
+  h.check(h.byId['card-skip'], true); h.click(h.byId['info-next']); await settle();
+  await h.advance(5100);
+  h.type(h.byId['q-answer'], 'x'); h.click(h.byId['q-confirm']); await settle();
+  h.click(h.byId['q-next']); h.byId['q-next'].onclick(); // a second tap in the same tick
+  await h.advance(60000);
+  const posts = f.posts('submit');
+  assert.strictEqual(posts.length, 4, 'four automatic attempts, one request chain');
+  assert.ok(posts.every((p) => JSON.stringify(p) === JSON.stringify(posts[0])), 'identical body every attempt');
+  assert.deepStrictEqual(h.page(), ['p-saving']);
+  assert.strictEqual(h.byId['saving-retry'].hidden, false);
+  assert.strictEqual(h.text('saving-text'), "연결이 잠시 불안정해요. 아래 '다시 시도'를 누르거나 부스 스태프에게 이 화면을 보여주세요.");
+  online = true;
+  h.click(h.byId['saving-retry']); await settle();
+  assert.deepStrictEqual(h.page(), ['p-ticket']);
+  assert.strictEqual(f.posts('submit').pop().requestId, posts[0].requestId, 'same requestId');
+  assert.ok(JSON.parse(h.local.map.get(STORE_KEY)).ticket, 'the ticket is stored');
+});
+
+test('F2r run: the saving text is written only when it changes; a locked answer is read-only', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {})));
+  const h = boot({ fetch: f });
+  await settle();
+  h.click(h.byId['landing-start']); await settle();
+  h.check(h.byId['card-skip'], true); h.click(h.byId['info-next']); await settle();
+  h.type(h.byId['q-answer'], 'a'); h.click(h.byId['q-confirm']); await settle();
+  assert.strictEqual(h.byId['q-answer'].readOnly, true);
+  assert.strictEqual(h.byId['q-answer'].disabled, false);
+  let writes = 0;
+  const el = h.byId['saving-text'];
+  Object.defineProperty(el, 'textContent', { set(v) { writes += 1; this._text = String(v); }, get() { return this._text; } });
+  h.click(h.byId['q-next']); await settle();
+  await h.advance(12000); // twelve one-second ticks: the first text and the 8 s "slow" text only
+  assert.ok(writes <= 2, 'the text was written ' + writes + ' times');
+  assert.strictEqual(h.text('saving-text'), '사람이 많아 조금 걸리고 있어요. 이 화면을 닫지 말고 기다려 주세요.');
+});
+
+// ============================================================================================ run: F3
+test('F3r run: the clock ticks every second and a redeemed demo ticket stays used after a reload', async () => {
+  const clock = makeClock();
+  const session = makeStorage();
+  const h = boot({ search: '?demo=1', session, clock });
+  await settle();
+  await cardPathToTicket(h);
+  assert.deepStrictEqual(h.page(), ['p-ticket']);
+  assert.ok(/^지금 \d\d:\d\d:\d\d$/.test(h.text('ticket-clock')));
+  const t0 = h.text('ticket-clock');
+  await clock.advance(1000);
+  assert.notStrictEqual(h.text('ticket-clock'), t0, 'the clock moved after one second');
+  assert.strictEqual(h.text('ticket-demo'), '미리보기 · 사용 불가');
+  assert.strictEqual(h.text('ticket-status'), '스태프에게 이 화면을 보여주세요');
+  h.click(h.byId['staff-toggle']);
+  assert.strictEqual(h.byId['staff-panel'].hidden, false);
+  h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']); await settle();
+  assert.strictEqual(h.text('staff-result'), '처리 완료 · 룰렛을 돌려 주세요');
+  assert.strictEqual(h.byId['staff-pin'].value, '', 'the PIN field is cleared');
+  assert.ok(/^룰렛 참여 완료 · \d\d:\d\d$/.test(h.text('ticket-status')));
+  assert.ok(h.byId['ticket-slot'].classList.contains('used'));
+  h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']); await settle();
+  assert.ok(/^이미 사용된 응모권이에요 \(\d\d:\d\d\)\. 룰렛을 다시 돌리지 마세요\.$/.test(h.text('staff-result')));
+  assert.ok(h.byId['staff-result'].className.indexOf('bad') !== -1);
+  // reload: the same session storage, a fresh page
+  const h2 = boot({ search: '?demo=1', session, clock });
+  await settle();
+  assert.deepStrictEqual(h2.page(), ['p-ticket']);
+  assert.ok(/^룰렛 참여 완료/.test(h2.text('ticket-status')), 'still used after the reload (checked locally)');
+  const all = JSON.stringify(Array.from(session.map.entries()));
+  assert.ok(all.indexOf(PIN) === -1, 'the PIN is never stored');
+  // an unused preview ticket can still be redeemed after a reload
+  const h3 = boot({ search: '?demo=1', session: makeStorage({ 'demo:valen-quiz:v3': storedState(mkTicket(5, { demo: true, eventId: 'demo-preview' }), { eventId: 'demo-preview' }) }), clock });
+  await settle();
+  h3.type(h3.byId['staff-pin'], PIN); h3.click(h3.byId['staff-redeem']); await settle();
+  assert.strictEqual(h3.text('staff-result'), '처리 완료 · 룰렛을 돌려 주세요');
+});
+
+test('F3r run: the redeem requestId persists across re-taps until a definitive answer; the PIN is cleared and never stored', async () => {
+  let failing = true;
+  const f = fakeFetch((url, init) => {
+    const b = init.method === 'POST' ? JSON.parse(init.body) : {};
+    if (init.method === 'GET') { return env(cfgData()); }
+    if (b.action === 'ticket') { return env({ ticket: mkTicket(3) }); }
+    if (failing) { throw new TypeError('offline'); }
+    const prior = f.posts('redeem').filter((x) => x.requestId !== b.requestId).length;
+    const first = f.posts('redeem')[0].requestId;
+    return prior === 0 || b.requestId === first
+      ? env({ status: 'REDEEMED', ticket: mkTicket(3, { redeemed: true, redeemedAt: '2026-10-14T06:10:00.000Z', redeemedLabel: '15:10' }), timing: {} })
+      : env({ status: 'ALREADY_REDEEMED', ticket: mkTicket(3, { redeemed: true, redeemedAt: '2026-10-14T06:10:00.000Z', redeemedLabel: '15:10' }), timing: {} });
+  });
+  const local = makeStorage({ [STORE_KEY]: storedState(mkTicket(3)) });
+  const h = boot({ fetch: f, local });
+  await settle();
+  h.click(h.byId['staff-toggle']);
+  h.type(h.byId['staff-pin'], '12'); h.click(h.byId['staff-redeem']); await settle();
+  assert.strictEqual(h.text('staff-result'), '확인 번호가 맞지 않아요.');
+  assert.strictEqual(f.posts('redeem').length, 0, 'a PIN of the wrong length is not sent');
+  h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']);
+  assert.strictEqual(h.byId['staff-pin'].value, '', 'cleared at once');
+  await h.advance(20000);
+  assert.strictEqual(f.posts('redeem').length, 3, 'three automatic attempts');
+  assert.strictEqual(h.byId['staff-redeem'].disabled, false, 'the staff can tap again');
+  assert.strictEqual(h.text('staff-result'), '연결이 잠시 불안정해요. 자동으로 다시 시도할게요.');
+  failing = false;
+  h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']); await settle();
+  const ids = f.posts('redeem').map((p) => p.requestId);
+  assert.strictEqual(new Set(ids).size, 1, 'the same requestId on every attempt and re-tap: ' + ids.join(','));
+  assert.strictEqual(h.text('staff-result'), '처리 완료 · 룰렛을 돌려 주세요');
+  assert.ok(h.byId['ticket-slot'].classList.contains('used'));
+  // a new tap after the final answer is a new request
+  h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']); await settle();
+  const ids2 = f.posts('redeem').map((p) => p.requestId);
+  assert.notStrictEqual(ids2[ids2.length - 1], ids[0], 'a new requestId after a definitive answer');
+  assert.ok(/^이미 사용된 응모권이에요 \(15:10\)\./.test(h.text('staff-result')));
+  assert.ok(JSON.stringify(Array.from(local.map.entries())).indexOf(PIN) === -1, 'the PIN is never stored');
+  assert.ok(f.calls.every((c) => c.url.indexOf(PIN) === -1), 'the PIN is never in a URL');
+});
+
+test('F3r run: reload shows the stored status first; used never goes back to unused; not found and unreachable states', async () => {
+  const used = mkTicket(4, { redeemed: true, redeemedAt: '2026-10-14T06:10:00.000Z', redeemedLabel: '15:10' });
+  // 1. a slow answer that says "unused" must not downgrade a used ticket
+  let release;
+  const slow = new Promise((resolve) => { release = () => resolve({ text: () => Promise.resolve(env({ ticket: mkTicket(4) })) }); });
+  const f1 = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : slow));
+  const local1 = makeStorage({ [STORE_KEY]: storedState(used) });
+  const h1 = boot({ fetch: f1, local: local1 });
+  await settle();
+  assert.strictEqual(h1.text('ticket-status'), '확인 중');
+  assert.ok(h1.byId['ticket-slot'].classList.contains('used'), 'the stored used state shows while checking');
+  release(); await settle();
+  assert.strictEqual(h1.text('ticket-status'), '룰렛 참여 완료 · 15:10');
+  assert.strictEqual(JSON.parse(local1.map.get(STORE_KEY)).ticket.redeemed, true);
+  assert.strictEqual(f1.posts('ticket').length, 1, 'exactly one status call');
+  // 2. TICKET_NOT_FOUND
+  const f2 = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : errEnv('TICKET_NOT_FOUND', false)));
+  const h2 = boot({ fetch: f2, local: makeStorage({ [STORE_KEY]: storedState(mkTicket(4)) }) });
+  await settle();
+  assert.strictEqual(h2.text('ticket-status'), '확인 불가');
+  // 3. unreachable: the stored status plus a recheck link, which asks again
+  let online = false;
+  const f3 = fakeFetch((url, init) => {
+    if (init.method === 'GET') { return env(cfgData()); }
+    if (!online) { throw new TypeError('offline'); }
+    return env({ ticket: used });
+  });
+  const h3 = boot({ fetch: f3, local: makeStorage({ [STORE_KEY]: storedState(mkTicket(4)) }) });
+  await settle(); await h3.advance(5000);
+  assert.strictEqual(h3.text('ticket-status'), '스태프에게 이 화면을 보여주세요');
+  assert.strictEqual(h3.byId['ticket-recheck'].hidden, false);
+  assert.strictEqual(h3.text('ticket-recheck'), '상태 다시 확인');
+  online = true;
+  h3.click(h3.byId['ticket-recheck']); await settle();
+  assert.strictEqual(h3.text('ticket-status'), '룰렛 참여 완료 · 15:10');
+  assert.strictEqual(h3.byId['ticket-recheck'].hidden, true);
+  // 4. a config for another event clears the stored ticket and returns to the landing
+  const f4 = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ eventId: 'phonetest-1012' })) : env({ ticket: mkTicket(4) })));
+  const h4 = boot({ fetch: f4, local: makeStorage({ [STORE_KEY]: storedState(mkTicket(4)) }) });
+  await settle();
+  assert.deepStrictEqual(h4.page(), ['p-landing']);
+});
+
+test('F2r run: a throwing async callback shows the boot card and keeps a valid ticket visible', async () => {
+  let release;
+  const slow = new Promise((resolve) => { release = () => resolve({ text: () => Promise.resolve(env({ ticket: mkTicket(6) })) }); });
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : slow));
+  const h = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: storedState(mkTicket(6)) }) });
+  await settle();
+  assert.strictEqual(h.vis('boot-card'), false);
+  Object.defineProperty(h.byId['ticket-status'], 'textContent', { set() { throw new Error('draw failed'); }, get() { return ''; } });
+  release(); await settle();
+  assert.strictEqual(h.vis('boot-card'), true);
+  assert.strictEqual(h.vis('p-ticket'), true, 'the ticket stays visible');
+  // the global handlers: an own error shows the card, foreign errors do not
+  const h2 = boot({ search: '?demo=1' });
+  await settle();
+  h2.fireWin('error', { message: 'Script error.', filename: '' });
+  h2.fireWin('error', { message: 'boom', filename: 'chrome-extension://abc/x.js' });
+  assert.strictEqual(h2.vis('boot-card'), false);
+  h2.fireWin('error', { message: 'boom', filename: 'https://localhost:8765/index.html' });
+  assert.strictEqual(h2.vis('boot-card'), true);
+  assert.deepStrictEqual(h2.page(), []);
+  const h3 = boot({ noCore: true });
+  assert.strictEqual(h3.vis('boot-card'), true, 'a missing QuizCore ends in the message, not a blank page');
 });

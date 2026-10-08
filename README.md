@@ -19,7 +19,7 @@ The API address in `defaults.js` is public by nature and may stay there.
 - `index.html`: screens and wiring (inline CSS and script, ES2017 only).
 - `quiz-core.js`: pure logic (API client, validation, storage, routing). Loaded as `window.QuizCore`.
 - `defaults.js`: build id, API address and the embedded fallback question and consent text. Loaded as `window.VALEN_QUIZ_DEFAULTS`.
-- `test/`: `node --test` suites. No dependencies and no build step.
+- `test/`: `node --test` suites (`page.test.js` runs the real page scripts against a small fake DOM). No dependencies and no build step.
 
 Both script tags in `index.html` carry the same `?v=<build>` as `defaults.js`. Change all three together when publishing.
 
@@ -35,5 +35,5 @@ node --test
 py -m http.server 8765 --directory "C:\CLAUDE\valen-quiz-web"
 ```
 
-Then open `http://localhost:8765/?demo=1` in a 390x844 window. `?demo=1` runs without a server, shows the `미리보기`
+Then open `http://localhost:8765/?demo=1` in a 390x844 window. `?demo=1` runs without the API (no network call, separate `demo:` storage keys), shows the `미리보기`
 badge and issues in-memory tickets that cannot be used. Without `demo`, the page calls the live API.
