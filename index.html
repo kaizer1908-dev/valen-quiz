@@ -278,7 +278,7 @@
   var PAGES = ['p-landing', 'p-info', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'];
 
   var demo = /[?&]demo=1(?:&|$)/.test(window.location.search);
-  // ?demo=1 never calls the network (in-memory demo api for config and tickets) and never touches the real
+  // ?demo=1 never calls the quiz API (the Pretendard font may still load from jsdelivr) (in-memory demo api for config and tickets) and never touches the real
   // storage keys: every storage call below receives this prefix.
   var SO = { prefix: demo ? 'demo:' : '' };
   var storage = openStorage();
