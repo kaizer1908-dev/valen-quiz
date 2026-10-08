@@ -1,19 +1,27 @@
 <!doctype html>
+<!--
+  Valen 행운퀴즈 참가자 페이지 (v3, 슬라이스 F2: 시작 화면, 정보 입력, 퀴즈, 저장 중 화면).
+  여는 방법: 터미널에서  py -m http.server 8765 --directory "<이 폴더 경로>"  를 실행한 뒤
+  브라우저에서 http://localhost:8765/?demo=1  을 엽니다. (?demo=1 은 서버 없이 미리보기, 실제 저장 없음)
+  로직은 quiz-core.js, 설정과 대체 문항은 defaults.js 에 있습니다. 이 파일은 화면과 연결만 담당합니다.
+-->
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>Valen's Quiz</title>
+<title>Valen 행운퀴즈</title>
+<!-- Pretendard is optional: it loads without blocking and the page renders fully with the system font. -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.css" media="print" onload="this.media='all'">
 <style>
   :root {
     --page: #2b2b2b; --text: #f2f2f2; --muted: #9a9a9a;
     --surface: #1e1e1e; --surface-2: #161616; --line: #3a3a3a; --line-2: #444;
-    --accent: #00a96b; --on-accent: #111; --cta: #ffffff; --on-cta: #111;
+    --accent: #00a96b; --on-accent: #111; --cta: #ffffff; --on-cta: #111; --danger: #ff8a80;
     --radius: 16px;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; background: var(--page); color: var(--text); }
   body {
     font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
@@ -22,24 +30,28 @@
   }
   button, input { font: inherit; }
   input { font-size: 16px; }
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  [tabindex="-1"]:focus { outline: none; }
   .band { height: 56px; display: flex; align-items: center; padding: 0 20px;
     background: linear-gradient(90deg, #2563eb 0%, #6f95f2 55%, #ffffff 100%); }
   .band b { color: #fff; font-weight: 800; font-size: 20px; letter-spacing: .5px; }
-  .draft { margin-left: auto; font-size: 11px; color: #1d3a8a; background: rgba(255,255,255,.85); border-radius: 99px; padding: 2px 8px; }
+  .badges { margin-left: auto; display: flex; gap: 6px; }
+  .draft { font-size: 11px; color: #1d3a8a; background: rgba(255,255,255,.85); border-radius: 99px; padding: 2px 8px; }
+  .draft.demo { background: var(--accent); color: var(--on-accent); font-weight: 700; }
   main { max-width: 480px; margin: 0 auto; padding: 24px 20px 40px; }
-  .page[hidden] { display: none; }
   h1 { font-size: 34px; line-height: 1.2; margin: 28px 0 10px; text-align: center; letter-spacing: -0.5px; }
   h2 { font-size: 22px; line-height: 1.35; margin: 8px 0 16px; letter-spacing: -0.3px; white-space: pre-line; }
   .sub { text-align: center; color: var(--text); font-size: 18px; margin: 0 0 24px; }
-  .chips { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 28px; }
-  .chip { border: 1px solid var(--line-2); border-radius: 99px; padding: 8px 16px; font-size: 14px; background: var(--surface-2); }
   .steps { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 24px; }
-  .steps p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+  .steps h2 { margin: 0 0 8px; color: var(--muted); font-size: 13px; font-weight: 400; letter-spacing: 0; }
   .steps ol { margin: 0; padding-left: 20px; font-size: 15px; }
-  .steps li { margin: 4px 0; }
+  .steps li { margin: 6px 0; }
   .cta { display: block; width: 100%; min-height: 54px; border: 0; border-radius: 99px; background: var(--cta); color: var(--on-cta); font-weight: 700; font-size: 17px; cursor: pointer; }
-  .cta[disabled] { background: #555; color: #999; cursor: default; }
+  .cta[disabled] { background: #555; color: #bbb; cursor: default; }
   .note { color: var(--muted); font-size: 13px; text-align: center; margin-top: 14px; }
+  .msg-card { background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 22px 20px; }
+  .msg-card p { margin: 0; font-size: 16px; }
+  .alert { background: #3a1f1f; border: 1px solid #7a3b3b; color: var(--danger); border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; font-size: 14px; }
   .card-skip { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 16px; margin-bottom: 18px; cursor: pointer; }
   .card-skip.on { border-color: var(--accent); }
   .card-skip input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
@@ -49,258 +61,589 @@
   .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
   label.field { display: block; margin-bottom: 14px; font-size: 14px; color: var(--muted); }
   label.field input { display: block; width: 100%; margin-top: 6px; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); }
+  .req { color: var(--danger); }
   .consent { margin: 8px 0 20px; font-size: 14px; }
   .consent label { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
-  .consent input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .consent input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
   .consent details { color: var(--muted); font-size: 13px; margin: 0 0 6px 30px; }
+  .consent details p { margin: 6px 0; white-space: pre-line; }
+  .consent a { color: var(--text); }
   .progress { display: flex; gap: 6px; margin: 4px 0 8px; }
   .progress i { flex: 1; height: 4px; border-radius: 4px; background: var(--line); }
   .progress i.on { background: var(--accent); }
   .count { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
   .eyebrow { color: var(--muted); font-size: 14px; margin-top: 10px; }
+  .hint { margin: -4px 0 16px; font-size: 15px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  .hint b { display: inline-block; margin-right: 8px; padding: 1px 10px; border-radius: 99px; background: var(--accent); color: var(--on-accent); font-size: 13px; }
   .options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
   .opt { text-align: left; padding: 15px 16px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text); font-size: 16px; cursor: pointer; }
   .opt.sel { border-color: var(--text); outline: 2px solid var(--text); }
+  .opt[disabled], .abcard[disabled] { cursor: default; }
   .ab { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
   .abcard { border: 2px solid var(--line-2); border-radius: 14px; background: var(--surface-2); padding: 8px; cursor: pointer; text-align: center; color: var(--text); }
   .abcard.sel { border-color: var(--text); }
-  .abimg { aspect-ratio: 4/5; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: #fff; overflow: hidden; }
+  .abimg { aspect-ratio: 4/5; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; background: #333; color: #fff; overflow: hidden; padding: 6px; }
   .abimg img { width: 100%; height: 100%; object-fit: contain; }
   .badge { display: inline-block; margin-top: 8px; padding: 3px 14px; border-radius: 99px; background: #333; font-weight: 700; font-size: 14px; }
-  .badge.ok { background: var(--accent); color: var(--on-accent); }
   .cap { display: block; font-size: 13px; color: var(--muted); margin-top: 6px; }
   .explain { background: #111; border-radius: 14px; padding: 16px; margin-bottom: 18px; white-space: pre-line; font-size: 15px; }
   .explain b { display: block; font-size: 17px; margin-bottom: 6px; }
+  .explain .correct { margin-bottom: 8px; }
   .text-answer { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); margin-bottom: 14px; }
-  .hint { color: var(--muted); font-size: 14px; margin: -4px 0 14px; }
+  .center { text-align: center; }
+  .spinner { width: 44px; height: 44px; margin: 40px auto 18px; border-radius: 50%; border: 4px solid var(--line-2); border-top-color: var(--text); }
+  @media (prefers-reduced-motion: no-preference) {
+    .spinner { animation: spin 1s linear infinite; }
+    .page { animation: in .25s ease-out; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  }
+  /* Ticket placeholder: slice F3 replaces the inside of #ticket-slot, slice F4 restyles it. */
   .ticket { margin-top: 12px; border-radius: 22px; padding: 26px 22px; text-align: center; color: #111;
-    background: radial-gradient(circle at 15% 10%, #ffffff 0%, #e8f0ff 45%, #c9dafd 100%); position: relative; }
-  .ticket::before, .ticket::after { content: ""; position: absolute; top: 58%; width: 28px; height: 28px; border-radius: 50%; background: var(--page); }
-  .ticket::before { left: -14px; } .ticket::after { right: -14px; }
-  .ticket .kicker { font-size: 13px; letter-spacing: 2px; color: #2563eb; font-weight: 700; }
-  .ticket .title { font-size: 26px; font-weight: 800; margin: 6px 0 14px; }
+    background: radial-gradient(circle at 15% 10%, #ffffff 0%, #e8f0ff 45%, #c9dafd 100%); }
+  .ticket h2 { font-size: 26px; font-weight: 800; margin: 6px 0 14px; }
   .ticket .no { font-size: 48px; font-weight: 800; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
-  .ticket .who { font-size: 15px; margin-top: 4px; }
-  .ticket .perf { border-top: 2px dashed rgba(0,0,0,.2); margin: 18px -6px 14px; }
-  .ticket .msg { font-size: 16px; font-weight: 700; }
-  .ticket .time { font-size: 12px; color: #555; margin-top: 8px; }
-  .placeholder { margin-top: 14px; border: 1px dashed var(--line-2); border-radius: 12px; padding: 10px; font-size: 12px; color: var(--muted); text-align: center; }
-  .staff-done { display: none; margin-top: 10px; font-weight: 700; color: var(--accent); }
-  @media (prefers-reduced-motion: no-preference) { .page { animation: in .25s ease-out; } @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } } }
+  .ticket .msg { font-size: 16px; font-weight: 700; margin-top: 12px; }
+  .ticket .time { font-size: 13px; color: #444; margin-top: 8px; }
 </style>
 </head>
 <body>
-<div class="band"><b>VALEN</b><span class="draft">시안 v1</span></div>
+<div class="band"><b>VALEN</b><span class="badges"><span class="draft demo" id="demo-badge" hidden>미리보기</span><span class="draft">시안 v1</span></span></div>
 <main>
+
+  <!-- Shown when a script fails to load or the page throws. Never leave a blank screen. -->
+  <section class="msg-card" id="boot-card" data-testid="boot-card" role="alert" hidden>
+    <p>잠시 후 새로고침해 주세요. 계속 안 되면 부스 스태프에게 말씀해 주세요.</p>
+  </section>
 
   <!-- 1. Landing -->
   <section class="page" id="p-landing">
-    <h1>Valen's Quiz</h1>
-    <p class="sub">당신의 감, 마케팅이랑 맞을까요?</p>
-    <div class="chips">
-      <span class="chip" id="chip-meta">퀴즈 · 2분 · 난이도 ★☆☆☆☆</span>
-      <span class="chip">참여만 해도 100% 증정! 룰렛 경품까지!</span>
-    </div>
+    <h1 data-testid="landing-title">Valen 행운퀴즈</h1>
+    <p class="sub">힌트 보면 다 맞혀요. 1분이면 경품까지</p>
     <div class="steps">
-      <p>참여 방법</p>
+      <h2>참여 방법</h2>
       <ol>
-        <li>명함을 넣거나 참여 정보를 입력해요</li>
-        <li>퀴즈를 풀어요</li>
-        <li>응모권을 스태프에게 보여주세요</li>
-        <li>행운의 룰렛을 돌려요</li>
+        <li>명함을 명함함에 넣어 주세요 (명함이 없으면 다음 화면에서 정보를 입력해요)</li>
+        <li>행운퀴즈를 풀어요</li>
+        <li>응모권을 받아 행운의 룰렛을 돌려요</li>
+        <li>기프트백을 받아 가세요</li>
       </ol>
     </div>
-    <button class="cta" id="btn-start">시작하기</button>
+    <button type="button" class="cta" id="landing-start" data-testid="landing-start">시작하기</button>
     <p class="note">참여 정보는 행사 운영 목적으로만 사용돼요.</p>
   </section>
 
-  <!-- 2. Info -->
+  <!-- 2. Info (card path = one checkbox; otherwise name, phone and consent) -->
   <section class="page" id="p-info" hidden>
     <h2>참여 정보를 알려주세요</h2>
-    <label class="card-skip" id="card-skip">
-      <input type="checkbox" id="chk-card">
-      <div><strong>명함을 이미 제출했어요</strong><span>체크하면 정보 입력 없이 바로 퀴즈로 넘어가요.</span></div>
-    </label>
-    <div id="info-form">
-      <div class="divider">명함이 없다면 직접 입력</div>
-      <label class="field">이름<input id="f-name" autocomplete="name" maxlength="40"></label>
-      <label class="field">소속(회사명)<input id="f-org" autocomplete="organization" maxlength="80"></label>
-      <label class="field">연락처<input id="f-phone" type="tel" inputmode="numeric" placeholder="010-1234-5678" autocomplete="tel" maxlength="20"></label>
-      <label class="field">이메일<input id="f-email" type="email" inputmode="email" autocomplete="email" maxlength="120"></label>
-      <div class="consent">
-        <label><input type="checkbox" id="c-req"> [필수] 개인정보 수집·이용 동의</label>
-        <details><summary>자세히</summary>수집 항목: 이름, 소속, 연락처, 이메일<br>수집 목적: 경품 지급 및 행사 안내<br>보관 기간: 행사 종료 후 30일 (최종 문구는 확정 후 반영)</details>
-        <label><input type="checkbox" id="c-mkt"> [선택] 마케팅 정보 수신 동의</label>
+    <form id="info-form" novalidate>
+      <label class="card-skip" id="card-skip-box">
+        <input type="checkbox" id="card-skip" data-testid="card-skip">
+        <div><strong>명함을 명함함에 넣었어요</strong><span>체크하면 정보 입력 없이 바로 퀴즈로 넘어가요.</span></div>
+      </label>
+      <div class="alert" id="info-error" data-testid="info-error" role="alert" hidden></div>
+      <div id="info-fields">
+        <div class="divider">명함이 없다면 직접 입력</div>
+        <label class="field">이름<span class="req" aria-hidden="true"> *</span><input id="field-name" data-testid="field-name" autocomplete="name" maxlength="40" required></label>
+        <label class="field">소속<input id="field-org" data-testid="field-org" autocomplete="organization" maxlength="80"></label>
+        <label class="field">휴대폰 번호<span class="req" aria-hidden="true"> *</span><input id="field-phone" data-testid="field-phone" type="tel" inputmode="numeric" placeholder="010-1234-5678" autocomplete="tel" maxlength="20" required></label>
+        <label class="field">이메일<input id="field-email" data-testid="field-email" type="email" inputmode="email" autocomplete="email" maxlength="120"></label>
+        <div class="consent">
+          <label><input type="checkbox" id="consent-required" data-testid="consent-required"> [필수] 개인정보 수집·이용 동의</label>
+          <details><summary>자세히</summary>
+            <p id="consent-items"></p>
+            <p id="consent-detail"></p>
+            <a id="consent-link" target="_blank" rel="noopener noreferrer" hidden>개인정보 처리방침 전문 보기</a>
+          </details>
+          <div id="marketing-box">
+            <label><input type="checkbox" id="consent-marketing" data-testid="consent-marketing"> [선택] 마케팅 정보 수신 동의</label>
+            <details><summary>자세히</summary><p id="consent-marketing-detail"></p></details>
+          </div>
+        </div>
       </div>
-    </div>
-    <button class="cta" id="btn-info" disabled>퀴즈 시작하기</button>
+      <button type="submit" class="cta" id="info-next" data-testid="info-next">퀴즈 풀기</button>
+    </form>
   </section>
 
-  <!-- 3. Quiz -->
+  <!-- 3. Quiz (one question at a time; the question comes from the Sheet or from defaults.js) -->
   <section class="page" id="p-quiz" hidden>
-    <div class="progress" id="progress"></div>
-    <div class="count" id="count"></div>
-    <div class="eyebrow" id="q-eyebrow"></div>
-    <h2 id="q-title"></h2>
-    <div id="q-body"></div>
-    <div class="explain" id="q-explain" hidden></div>
-    <button class="cta" id="btn-next" hidden>다음</button>
+    <div class="progress" id="progress" hidden></div>
+    <div class="count" id="q-count" hidden></div>
+    <div class="eyebrow">행운퀴즈</div>
+    <h2 id="q-title" data-testid="q-title"></h2>
+    <p class="hint" id="q-hint" data-testid="q-hint"><b>힌트</b><span id="q-hint-text"></span></p>
+    <div class="options" id="q-choice" hidden></div>
+    <div class="ab" id="q-ab" hidden></div>
+    <form id="q-text" novalidate hidden>
+      <input class="text-answer" id="q-answer" data-testid="q-answer" placeholder="정답을 입력해 주세요" maxlength="40" autocomplete="off" aria-label="정답">
+      <button type="submit" class="cta" id="q-confirm" disabled>확인</button>
+    </form>
+    <div class="explain" id="q-feedback" role="status" hidden>
+      <b id="q-head"></b>
+      <div class="correct" id="q-correct" hidden></div>
+      <div id="q-explain" hidden></div>
+    </div>
+    <button type="button" class="cta" id="q-next" data-testid="q-next" hidden>다음</button>
   </section>
 
-  <!-- 4. Ticket -->
+  <!-- Waiting for config (at most 5 s, then the embedded question is used) -->
+  <section class="page" id="p-wait" hidden><div class="spinner"></div></section>
+
+  <!-- 4. Saving -->
+  <section class="page center" id="p-saving" data-testid="saving-root" hidden>
+    <div class="spinner" id="saving-spinner"></div>
+    <h2 id="saving-text" role="status"></h2>
+    <button type="button" class="cta" id="saving-retry" data-testid="saving-retry" hidden>다시 시도</button>
+  </section>
+
+  <!-- Error card (non-retryable server errors) -->
+  <section class="page" id="p-error" data-testid="error-card" data-error-code="" hidden>
+    <div class="msg-card" role="alert"><p id="error-text"></p></div>
+  </section>
+
+  <!-- 5. Ticket placeholder. Slice F3 builds the real ticket, status check and staff panel here. -->
   <section class="page" id="p-ticket" hidden>
-    <h2>퀴즈 완료! 응모권이 발급됐어요</h2>
-    <div class="ticket">
-      <div class="kicker">VALEN · LUCKY ROULETTE</div>
-      <div class="title">행운의 룰렛 응모권</div>
-      <div class="no" id="t-no">No. 000</div>
-      <div class="who" id="t-who"></div>
-      <div class="perf"></div>
-      <div class="msg">스태프에게 이 화면을 보여주세요</div>
-      <div class="time" id="t-time"></div>
-      <div class="staff-done" id="t-staff">✓ 룰렛 참여 완료</div>
+    <div class="ticket" id="ticket-slot" data-testid="ticket-root">
+      <h2>행운의 룰렛 응모권</h2>
+      <div class="no" id="ticket-no" data-testid="ticket-no"></div>
+      <div class="time" id="ticket-issued" data-testid="ticket-issued"></div>
+      <div class="msg" id="ticket-status" data-testid="ticket-status"></div>
+      <div class="time" id="ticket-note"></div>
+      <div class="time" id="ticket-demo"></div>
     </div>
-    <p class="note">스태프 확인 후 실물 룰렛을 돌릴 수 있어요. 응모권은 1인 1회만 사용할 수 있어요.</p>
-    <div class="placeholder">응모권 디자인은 별도 시안 전달 후 이 영역에 적용됩니다.</div>
   </section>
 
 </main>
+<script src="defaults.js?v=2026-10-08.1"></script>
+<script src="quiz-core.js?v=2026-10-08.1"></script>
+<script>
+// Safety net, registered before the app script so even a syntax error in it ends in a message, not a blank page.
+(function () {
+  'use strict';
+  function showBoot() {
+    var pages = document.querySelectorAll('.page');
+    for (var i = 0; i < pages.length; i++) { pages[i].hidden = true; }
+    document.getElementById('boot-card').hidden = false;
+  }
+  // Errors from other origins (in-app browser injections, extensions) are not ours: ignore them.
+  window.onerror = function (message, source) {
+    var own = typeof source === 'string' && source.indexOf(window.location.protocol + '//' + window.location.host) === 0;
+    if (own && message !== 'Script error.') { showBoot(); }
+    return false;
+  };
+  if (!window.QuizCore || !window.VALEN_QUIZ_DEFAULTS) { showBoot(); }
+})();
+</script>
 <script>
 (function () {
   'use strict';
-  // Quiz content: replace items here to swap questions. type: 'choice' (no right answer),
-  // 'ab' (two creatives, correct = 'A' | 'B'), 'text' (free answer, no grading).
-  var QUESTIONS = [
-    { type: 'choice', eyebrow: '고민 선택', title: '지금 가장 가까운 상황을 선택해주세요.',
-      options: ['신제품을 기획 중이다', '해외 진출을 준비 중이다', '광고 효율 개선이 필요하다', '크리에이터 협업을 검토 중이다', '해당하지 않지만, 발렌을 알고 싶다'],
-      explain: '오후 5시, session 3 첫 번째 강연에서 해결책을 제시해드립니다.' },
-    { type: 'ab', eyebrow: '소재 A/B · 예시', title: '더 오래 게재된 위닝 소재는?',
-      a: { label: '소재 A', caption: '구체적 상황 묘사형', color: '#3b5bdb' },
-      b: { label: '소재 B', caption: '제품명 강조형', color: '#5c5f66' }, correct: 'A',
-      explain: '구체적인 사용 상황을 보여준 소재가 더 오래 살아남았어요.\n(예시 문항입니다. 실제 소재와 해설로 교체됩니다.)' },
-    { type: 'ab', eyebrow: '소재 A/B · 예시', title: '클릭률이 더 높았던 썸네일은?',
-      a: { label: '소재 A', caption: '효능 한 문장', color: '#5c5f66' },
-      b: { label: '소재 B', caption: '사용 전후 궁금증', color: '#3b5bdb' }, correct: 'B',
-      explain: '결과를 다 보여주지 않고 궁금증을 남긴 썸네일이 더 많이 눌렸어요.\n(예시 문항입니다.)' },
-    { type: 'text', eyebrow: '행운퀴즈', title: 'K-뷰티 성장의 핵심은 브랜드 인지도가 아니라\n국가별 OOO를 맞춘 히어로 SKU였습니다.',
-      hint: '힌트: ㅍㅇF', placeholder: '정답을 입력해 주세요',
-      explain: '80개 브랜드 데이터 기반으로 쌓은 Insight와 Valen Agent를 오후 5시 강연에서 보실 수 있습니다.' }
-  ];
+  var Q = window.QuizCore;
+  var D = window.VALEN_QUIZ_DEFAULTS;
+  if (!Q || !D) { return; } // the safety net above already showed the message
 
-  var KEY = 'valen-quiz-v1';
-  function load() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
-  function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage blocked: works for this visit */ } }
-  var state = load();
+  var T0 = Date.now();
+  var CONFIG_WAIT_MS = 5000;   // the quiz waits at most this long for config, then uses the embedded question
+  var IMAGE_WAIT_MS = 8000;    // an A/B image that has not loaded by now becomes a caption box
+  var PAGES = ['p-landing', 'p-info', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'];
+  // Shown only in ?demo=1 so both the card path and the info path can be walked before the real text exists.
+  var DEMO_CONSENT = '미리보기용 동의 안내예요. 실제로 저장되는 정보는 없어요.';
+
+  var demo = /[?&]demo=1(?:&|$)/.test(window.location.search);
+  var storage = openStorage();
+  var api = demo ? Q.createDemoApi() : Q.createApi({ url: D.apiUrl, build: D.build });
+  var deviceId = Q.getDeviceId(storage);
+  var state = Q.loadState(storage, Date.now); // null when nothing is stored
+  var cfg = { status: 'pending', data: null }; // pending | done | fallback
+  var content = null;       // effective content, fixed when the quiz begins (a late config never changes it)
+  var waiter = null;        // callback parked while the config is awaited
+  var current = '';         // id of the visible page
+  var infoErrorCode = '';
+  var locked = false;       // the current question has been answered
+  var saving = null;        // {body, t0, attempt, max, exhausted, failedOnce, inFlight, tick}
+  var ticketExisting = '';
 
   function $(id) { return document.getElementById(id); }
+  function blank(v) { return v === null || v === undefined || String(v).trim() === ''; }
+
+  // Storage fails soft (private mode, blocked). In demo the data lives in sessionStorage under its own prefix,
+  // so a preview ticket can never be mistaken for a real one.
+  function openStorage() {
+    try {
+      var base = demo ? window.sessionStorage : window.localStorage;
+      var prefix = demo ? 'demo:' : '';
+      base.setItem(prefix + 'valen-quiz:probe', '1');
+      base.removeItem(prefix + 'valen-quiz:probe');
+      return {
+        getItem: function (k) { return base.getItem(prefix + k); },
+        setItem: function (k, v) { base.setItem(prefix + k, v); },
+        removeItem: function (k) { base.removeItem(prefix + k); }
+      };
+    } catch (e) { return null; }
+  }
+  function persist() { Q.saveState(storage, state, Date.now); }
+  function effective() { return Q.effectiveContent(cfg.data, D.embedded); }
+  function configEventId() { return cfg.status === 'done' && cfg.data ? cfg.data.eventId : ''; }
+
   function show(id) {
-    ['p-landing', 'p-info', 'p-quiz', 'p-ticket'].forEach(function (p) { $(p).hidden = p !== id; });
+    current = id;
+    PAGES.forEach(function (p) { $(p).hidden = p !== id; });
     window.scrollTo(0, 0);
+    var h = $(id).querySelector('h1, h2');
+    if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
   }
-  $('chip-meta').textContent = QUESTIONS.length + '문항 · 2분 · 난이도 ★☆☆☆☆';
+  function showError(code) {
+    $('p-error').setAttribute('data-error-code', code);
+    $('error-text').textContent = Q.errorCopy(code);
+    show('p-error');
+  }
 
-  // Info page
-  function infoValid() {
-    if ($('chk-card').checked) return true;
-    return $('f-name').value.trim() && $('f-phone').value.replace(/\D/g, '').length >= 10 && $('c-req').checked;
-  }
-  function refreshInfo() {
-    var card = $('chk-card').checked;
-    $('card-skip').classList.toggle('on', card);
-    $('info-form').hidden = card;
-    $('btn-info').disabled = !infoValid();
-  }
-  ['chk-card', 'f-name', 'f-org', 'f-phone', 'f-email', 'c-req', 'c-mkt'].forEach(function (id) {
-    $(id).addEventListener('input', refreshInfo); $(id).addEventListener('change', refreshInfo);
-  });
-  $('btn-start').onclick = function () { show('p-info'); refreshInfo(); };
-  $('btn-info').onclick = function () {
-    if (!infoValid()) return;
-    state.entry = $('chk-card').checked ? { card: true } : {
-      card: false, name: $('f-name').value.trim(), org: $('f-org').value.trim(),
-      phone: $('f-phone').value.trim(), email: $('f-email').value.trim(), marketing: $('c-mkt').checked
-    };
-    state.answers = []; state.q = 0; save(state);
-    renderQuestion();
-  };
-
-  // Quiz
-  function renderQuestion() {
-    var i = state.q, q = QUESTIONS[i];
-    show('p-quiz');
-    $('progress').innerHTML = '';
-    QUESTIONS.forEach(function (_, k) { var b = document.createElement('i'); if (k <= i) b.className = 'on'; $('progress').appendChild(b); });
-    $('count').textContent = (i + 1) + ' / ' + QUESTIONS.length;
-    $('q-eyebrow').textContent = 'Q' + (i + 1) + ' · ' + q.eyebrow;
-    $('q-title').textContent = q.title;
-    $('q-explain').hidden = true; $('btn-next').hidden = true;
-    $('btn-next').textContent = i === QUESTIONS.length - 1 ? '응모권 받기' : '다음';
-    var body = $('q-body'); body.innerHTML = '';
-    if (q.type === 'choice') {
-      var list = document.createElement('div'); list.className = 'options';
-      q.options.forEach(function (o) {
-        var b = document.createElement('button'); b.className = 'opt'; b.textContent = o;
-        b.onclick = function () { if (state.answers[i] != null) return; b.classList.add('sel'); answer(i, o, '<b>좋아요!</b>' + esc(q.explain)); };
-        list.appendChild(b);
-      });
-      body.appendChild(list);
-    } else if (q.type === 'ab') {
-      var grid = document.createElement('div'); grid.className = 'ab';
-      ['A', 'B'].forEach(function (side) {
-        var c = q[side.toLowerCase()];
-        var card = document.createElement('button'); card.className = 'abcard'; card.setAttribute('data-side', side);
-        var img = document.createElement('div'); img.className = 'abimg'; img.style.background = c.color;
-        if (c.image) { var im = document.createElement('img'); im.src = c.image; im.alt = c.label; img.appendChild(im); } else { img.textContent = c.label; }
-        var badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = side;
-        var cap = document.createElement('span'); cap.className = 'cap'; cap.textContent = c.caption;
-        card.appendChild(img); card.appendChild(badge); card.appendChild(cap);
-        card.onclick = function () {
-          if (state.answers[i] != null) return;
-          card.classList.add('sel');
-          grid.querySelectorAll('.abcard').forEach(function (x) {
-            var bd = x.querySelector('.badge'), s = x.getAttribute('data-side');
-            bd.textContent = s + (s === q.correct ? ' · 정답' : ' · 오답'); if (s === q.correct) bd.classList.add('ok');
-          });
-          var head = side === q.correct ? '정답이에요!' : '아쉬워요, 정답은 ' + q.correct + '예요';
-          answer(i, side, '<b>' + head + '</b>' + esc(q.explain));
-        };
-        grid.appendChild(card);
-      });
-      body.appendChild(grid);
+  // ------------------------------------------------------------------ config and routing
+  function onConfig(res) {
+    if (res.ok) {
+      cfg = { status: 'done', data: res.data };
+      if (demo) { // the demo server has no real consent text, so supply one
+        cfg.data.consent = Object.assign({}, cfg.data.consent, { requiredDetail: DEMO_CONSENT, collectedItems: D.embedded.consent.collectedItems });
+        cfg.data.infoPathReady = true;
+      }
     } else {
-      var hint = document.createElement('p'); hint.className = 'hint'; hint.textContent = q.hint;
-      var inp = document.createElement('input'); inp.className = 'text-answer'; inp.placeholder = q.placeholder; inp.maxLength = 40;
-      var go = document.createElement('button'); go.className = 'cta'; go.textContent = '확인';
-      go.onclick = function () { if (state.answers[i] != null) return; go.hidden = true; inp.disabled = true; answer(i, inp.value.trim(), '<b>참여 완료!</b>' + esc(q.explain)); };
-      body.appendChild(hint); body.appendChild(inp); body.appendChild(go);
+      cfg = { status: 'fallback', data: null };
     }
-  }
-  function answer(i, value, html) {
-    state.answers[i] = value; save(state);
-    $('q-explain').innerHTML = html; $('q-explain').hidden = false; $('btn-next').hidden = false;
-  }
-  $('btn-next').onclick = function () {
-    if (state.q < QUESTIONS.length - 1) { state.q += 1; save(state); renderQuestion(); return; }
-    if (!state.ticket) {
-      // Draft only: a device-local number. The connected version assigns the number on the server.
-      state.ticket = { no: 1 + Math.floor(Math.random() * 999), at: new Date().toISOString() };
-      save(state);
+    // A different event id means stored progress or a stored ticket belongs to an earlier test: start over.
+    if (cfg.status === 'done' && state && current !== 'p-saving') {
+      var r = Q.resetForEvent(storage, state, cfg.data.eventId);
+      if (r.reset) {
+        state = r.state;
+        content = null;
+        if (current !== 'p-wait') { show('p-landing'); }
+      }
     }
-    renderTicket();
-  };
-  function renderTicket() {
-    show('p-ticket');
-    $('t-no').textContent = 'No. ' + String(state.ticket.no).padStart(3, '0');
-    $('t-who').textContent = state.entry && !state.entry.card && state.entry.name ? state.entry.name + (state.entry.org ? ' · ' + state.entry.org : '') : '명함 제출 참여자';
-    var d = new Date(state.ticket.at);
-    $('t-time').textContent = '발급 ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    flushWait();
+    if (current === 'p-info') { renderConsent(); }
   }
-  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function whenContent(cb) {
+    if (cfg.status !== 'pending' || Date.now() - T0 >= CONFIG_WAIT_MS) { content = effective(); cb(); return; }
+    waiter = cb;
+    show('p-wait');
+    setTimeout(flushWait, Math.max(0, CONFIG_WAIT_MS - (Date.now() - T0)));
+  }
+  function flushWait() {
+    if (!waiter) { return; }
+    var cb = waiter;
+    waiter = null;
+    content = effective();
+    cb();
+  }
+  function enter(r) {
+    if (r.route === 'ticket') { renderTicket(); }
+    else if (r.route === 'saving') { startSaving(!!r.resend); }
+    else if (r.route === 'quiz') { renderQuestion(r.qIndex | 0); }
+    else if (r.route === 'info') { renderInfo(''); }
+    else { show('p-landing'); }
+  }
+  // Boot and every "what comes next" decision. Routes that need the questions wait for config first.
+  function route() {
+    var r = Q.routeOnLoad(state, null);
+    if (r.route === 'quiz') { whenContent(function () { enter(Q.routeOnLoad(state, content)); }); }
+    else { enter(r); }
+  }
 
-  // Resume: one ticket per device.
-  if (state.ticket) renderTicket();
-  else if (state.entry && state.answers && state.q != null) renderQuestion();
-  else show('p-landing');
+  // ------------------------------------------------------------------ landing and info
+  $('landing-start').onclick = function () {
+    var eff = effective();
+    if (cfg.status === 'done' && eff.registrationOpen === false) { showError('REGISTRATION_CLOSED'); return; }
+    state = Q.freshState(configEventId());
+    state.stage = 'info';
+    persist();
+    renderInfo('');
+  };
+
+  function showInfoError(code, field, quiet) {
+    infoErrorCode = code;
+    $('info-error').textContent = Q.errorCopy(code);
+    $('info-error').setAttribute('data-error-code', code);
+    $('info-error').hidden = false;
+    var ids = { name: 'field-name', phone: 'field-phone', organization: 'field-org', email: 'field-email', consent: 'consent-required' };
+    if (!quiet && ids[field]) { $(ids[field]).focus(); }
+  }
+  function hideInfoError() { infoErrorCode = ''; $('info-error').hidden = true; }
+  // Errors that come back from the server name a field only through their code.
+  var FIELD_OF_CODE = { REQUIRED_FIELDS: 'name', INVALID_PHONE: 'phone', INVALID_EMAIL: 'email', CONSENT_REQUIRED: 'consent', CONSENT_TEXT_MISSING: 'consent' };
+
+  // The info path is blocked while there is no consent text; the card path still works.
+  function updateGate() {
+    var blocked = !$('card-skip').checked && !effective().infoPathReady;
+    if (blocked) { showInfoError('CONSENT_TEXT_MISSING', '', true); }
+    else if (infoErrorCode === 'CONSENT_TEXT_MISSING') { hideInfoError(); }
+  }
+  function syncCard() {
+    var card = $('card-skip').checked;
+    $('card-skip-box').classList.toggle('on', card);
+    $('info-fields').hidden = card;
+    updateGate();
+  }
+  function renderConsent() {
+    var c = effective().consent || {};
+    $('consent-items').textContent = c.collectedItems || D.embedded.consent.collectedItems;
+    $('consent-detail').textContent = c.requiredDetail || '';
+    var url = c.privacyNoticeUrl || '';
+    if (/^https:\/\//.test(url)) { $('consent-link').href = url; $('consent-link').hidden = false; } else { $('consent-link').hidden = true; }
+    $('marketing-box').hidden = blank(c.marketingDetail);
+    $('consent-marketing-detail').textContent = c.marketingDetail || '';
+    updateGate();
+  }
+  function renderInfo(errorCode) {
+    var info = state.info || {};
+    var consent = state.consent || {};
+    $('field-name').value = info.name || '';
+    $('field-org').value = info.organization || '';
+    $('field-phone').value = info.phone || '';
+    $('field-email').value = info.email || '';
+    $('consent-required').checked = consent.required === true;
+    $('consent-marketing').checked = consent.marketing === true;
+    $('card-skip').checked = state.entryType === 'card';
+    hideInfoError();
+    show('p-info');
+    renderConsent();
+    syncCard();
+    if (errorCode) { showInfoError(errorCode, FIELD_OF_CODE[errorCode] || '', false); }
+  }
+  $('card-skip').addEventListener('change', syncCard);
+  $('info-form').addEventListener('input', function () {
+    if (infoErrorCode && infoErrorCode !== 'CONSENT_TEXT_MISSING') { hideInfoError(); }
+  });
+  $('info-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if ($('card-skip').checked) {
+      state.entryType = 'card';
+      delete state.info; // nothing personal is kept on the card path
+      delete state.consent;
+    } else {
+      var eff = effective();
+      var info = { name: $('field-name').value.trim(), organization: $('field-org').value.trim(), phone: $('field-phone').value.trim(), email: $('field-email').value.trim() };
+      var consent = {
+        required: $('consent-required').checked,
+        marketing: $('consent-marketing').checked && !$('marketing-box').hidden,
+        version: eff.consent ? eff.consent.version : ''
+      };
+      var v = Q.validateInfo('info', info, consent, eff.infoPathReady);
+      if (!v.ok) { showInfoError(v.code, v.field, false); return; }
+      state.entryType = 'info';
+      state.info = info;
+      state.consent = consent;
+    }
+    state.stage = 'quiz';
+    persist();
+    route();
+  });
+
+  // ------------------------------------------------------------------ quiz
+  function correctText(q) {
+    if (q.type === 'text') { return (q.accepted && q.accepted.length) ? String(q.accepted[0]) : ''; }
+    return String(q.correct);
+  }
+  function renderQuestion(i) {
+    var qs = content.questions;
+    var q = qs[i];
+    locked = false;
+    state.stage = 'quiz';
+    state.qIndex = i;
+    persist();
+    show('p-quiz');
+    var many = qs.length > 1;
+    $('progress').hidden = !many;
+    $('q-count').hidden = !many;
+    if (many) {
+      $('progress').innerHTML = '';
+      qs.forEach(function (_, k) { var b = document.createElement('i'); if (k <= i) { b.className = 'on'; } $('progress').appendChild(b); });
+      $('q-count').textContent = (i + 1) + ' / ' + qs.length;
+    }
+    $('q-title').textContent = q.title;
+    $('q-hint').hidden = blank(q.hint);
+    $('q-hint-text').textContent = q.hint || '';
+    $('q-feedback').hidden = true;
+    $('q-next').hidden = true;
+    $('q-next').disabled = false;
+    $('q-next').textContent = i === qs.length - 1 ? '응모권 받기' : '다음';
+    $('q-choice').hidden = true; $('q-ab').hidden = true; $('q-text').hidden = true;
+    if (q.type === 'choice') { buildChoice(q, i); }
+    else if (q.type === 'ab') { buildAb(q, i); }
+    else { buildText(q, i); }
+  }
+  function buildChoice(q, i) {
+    var box = $('q-choice');
+    box.innerHTML = '';
+    box.hidden = false;
+    (q.options || []).forEach(function (text) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'opt'; b.textContent = text; b.setAttribute('data-testid', 'q-option');
+      b.onclick = function () {
+        if (locked) { return; }
+        b.classList.add('sel');
+        Array.prototype.forEach.call(box.querySelectorAll('button'), function (x) { x.disabled = true; });
+        answer(q, i, text);
+      };
+      box.appendChild(b);
+    });
+  }
+  function buildAb(q, i) {
+    var grid = $('q-ab');
+    grid.innerHTML = '';
+    grid.hidden = false;
+    ['A', 'B'].forEach(function (side) {
+      var url = (side === 'A' ? q.imageA : q.imageB) || '';
+      var cap = (side === 'A' ? q.captionA : q.captionB) || '';
+      var card = document.createElement('button');
+      card.type = 'button'; card.className = 'abcard'; card.setAttribute('data-testid', 'q-option'); card.setAttribute('data-side', side);
+      var box = document.createElement('div');
+      box.className = 'abimg';
+      var loaded = false;
+      function captionBox() { if (!loaded) { box.textContent = cap || side; } } // replaces a failed or slow image
+      if (/^https:\/\//.test(url)) {
+        var img = document.createElement('img');
+        img.alt = cap || side;
+        img.setAttribute('referrerpolicy', 'no-referrer'); // lh3 / Drive hosts must not receive this page's URL
+        img.onload = function () { loaded = true; };
+        img.onerror = captionBox;
+        img.src = url;
+        box.appendChild(img);
+        setTimeout(captionBox, IMAGE_WAIT_MS);
+      } else {
+        captionBox();
+      }
+      var badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = side;
+      card.appendChild(box); card.appendChild(badge);
+      if (cap) { var c = document.createElement('span'); c.className = 'cap'; c.textContent = cap; card.appendChild(c); }
+      card.onclick = function () {
+        if (locked) { return; }
+        card.classList.add('sel');
+        Array.prototype.forEach.call(grid.querySelectorAll('button'), function (x) { x.disabled = true; });
+        answer(q, i, side);
+      };
+      grid.appendChild(card);
+    });
+  }
+  function buildText(q, i) {
+    var form = $('q-text');
+    var input = $('q-answer');
+    form.hidden = false;
+    input.value = '';
+    input.disabled = false;
+    $('q-confirm').disabled = true;
+    $('q-confirm').hidden = false;
+    form.onsubmit = function (ev) {
+      ev.preventDefault();
+      var v = input.value.trim();
+      if (locked || v === '') { return; }
+      input.disabled = true;
+      $('q-confirm').hidden = true;
+      answer(q, i, v);
+    };
+  }
+  $('q-answer').addEventListener('input', function () { $('q-confirm').disabled = $('q-answer').value.trim() === ''; });
+
+  // A tap locks the answer. The ticket is issued whatever the answer was (decision Q2-A).
+  function answer(q, i, value) {
+    locked = true;
+    state.answers[q.id] = value;
+    persist();
+    var g = Q.gradeForDisplay(q, value);
+    $('q-head').textContent = g === true ? '정답이에요!' : (g === false ? '아쉬워요!' : '좋아요!');
+    $('q-correct').hidden = g !== false;
+    $('q-correct').textContent = g === false ? '정답: ' + correctText(q) : '';
+    $('q-explain').hidden = blank(q.explanation);
+    $('q-explain').textContent = q.explanation || '';
+    $('q-feedback').hidden = false;
+    $('q-next').hidden = false;
+    $('q-next').focus();
+  }
+  $('q-next').onclick = function () {
+    var next = (state.qIndex | 0) + 1;
+    if (next < content.questions.length) { renderQuestion(next); return; }
+    $('q-next').disabled = true; // a double tap must not start two saves
+    startSaving(false);
+  };
+
+  // ------------------------------------------------------------------ saving
+  function renderSaving() {
+    if (!saving) { return; }
+    $('saving-text').textContent = saving.exhausted ? Q.COPY.submitExhausted : Q.savingText(saving.attempt, saving.max, Date.now() - saving.t0);
+    $('saving-spinner').hidden = saving.exhausted;
+    $('saving-retry').hidden = !saving.failedOnce;
+  }
+  function stopTick() { if (saving && saving.tick) { clearInterval(saving.tick); saving.tick = null; } }
+  // resend = true re-sends the stored pending body unchanged (same requestId), after a reload mid-save.
+  function startSaving(resend) {
+    show('p-saving');
+    var body;
+    if (resend && state.pending && state.pending.body) {
+      body = state.pending.body;
+    } else {
+      if (!content) { content = effective(); }
+      if (!state.eventId) { state.eventId = configEventId(); }
+      body = Q.buildSubmitBody(state, content, deviceId, Q.newId(), D.build);
+    }
+    saving = { body: body, t0: Date.now(), attempt: 1, max: Q.POLICY.submit.attempts, exhausted: false, failedOnce: false, inFlight: false, tick: null };
+    send();
+  }
+  function send() {
+    saving.inFlight = true;
+    saving.exhausted = false;
+    saving.t0 = Date.now();
+    renderSaving();
+    stopTick();
+    saving.tick = setInterval(renderSaving, 1000); // the 8 second "slow" message appears without any other event
+    Q.submitWithPending(api, storage, state, saving.body, Date.now).then(function (res) {
+      saving.inFlight = false;
+      stopTick();
+      state = res.state;
+      handleResult(res.response);
+    });
+  }
+  api.onState = function (e) {
+    if (e.action !== 'submit' || !saving || current !== 'p-saving') { return; }
+    saving.max = e.max;
+    saving.attempt = e.state === 'waiting' ? e.attempt + 1 : e.attempt; // "waiting" announces the coming retry
+    if (e.state !== 'sending' || e.attempt > 1) { saving.failedOnce = true; }
+    renderSaving();
+  };
+  $('saving-retry').onclick = function () {
+    if (!saving) { return; }
+    if (saving.inFlight) { api.retryNow('submit'); } // skips the wait; the pending send then resolves as usual
+    else { send(); }                                 // after exhaustion: the same body, the same requestId
+  };
+  function handleResult(r) {
+    if (r.ok) {
+      ticketExisting = r.data.existing || '';
+      if (!state.eventId && state.ticket) { state.eventId = state.ticket.eventId || ''; persist(); }
+      renderTicket();
+      return;
+    }
+    if (r.code === 'IN_FLIGHT') { return; }
+    if (r.action === 'back-to-info') { renderInfo(r.code); return; }
+    if (r.retryable) { // out of automatic attempts: keep the screen, keep the manual button
+      saving.exhausted = true;
+      saving.failedOnce = true;
+      renderSaving();
+      return;
+    }
+    showError(r.code);
+  }
+
+  // ------------------------------------------------------------------ ticket (placeholder until slice F3)
+  function renderTicket() {
+    var vm = Q.ticketViewModel(state.ticket, Date.now, { existing: ticketExisting });
+    $('ticket-no').textContent = vm.label;
+    $('ticket-issued').textContent = vm.issuedText;
+    $('ticket-status').textContent = vm.statusText;
+    $('ticket-note').textContent = vm.note;
+    $('ticket-demo').textContent = vm.demoWatermark;
+    show('p-ticket');
+  }
+
+  // ------------------------------------------------------------------ start
+  $('demo-badge').hidden = !demo;
+  api.config().then(onConfig);
+  route();
 })();
 </script>
 </body>
