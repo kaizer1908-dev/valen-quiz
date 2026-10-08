@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Valen's Quiz</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.css" media="print" onload="this.media='all'">
+<style>
+  :root {
+    --page: #2b2b2b; --text: #f2f2f2; --muted: #9a9a9a;
+    --surface: #1e1e1e; --surface-2: #161616; --line: #3a3a3a; --line-2: #444;
+    --accent: #00a96b; --on-accent: #111; --cta: #ffffff; --on-cta: #111;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--page); color: var(--text); }
+  body {
+    font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.5;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  button, input { font: inherit; }
+  input { font-size: 16px; }
+  .band { height: 56px; display: flex; align-items: center; padding: 0 20px;
+    background: linear-gradient(90deg, #2563eb 0%, #6f95f2 55%, #ffffff 100%); }
+  .band b { color: #fff; font-weight: 800; font-size: 20px; letter-spacing: .5px; }
+  .draft { margin-left: auto; font-size: 11px; color: #1d3a8a; background: rgba(255,255,255,.85); border-radius: 99px; padding: 2px 8px; }
+  main { max-width: 480px; margin: 0 auto; padding: 24px 20px 40px; }
+  .page[hidden] { display: none; }
+  h1 { font-size: 34px; line-height: 1.2; margin: 28px 0 10px; text-align: center; letter-spacing: -0.5px; }
+  h2 { font-size: 22px; line-height: 1.35; margin: 8px 0 16px; letter-spacing: -0.3px; white-space: pre-line; }
+  .sub { text-align: center; color: var(--text); font-size: 18px; margin: 0 0 24px; }
+  .chips { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 28px; }
+  .chip { border: 1px solid var(--line-2); border-radius: 99px; padding: 8px 16px; font-size: 14px; background: var(--surface-2); }
+  .steps { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 24px; }
+  .steps p { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+  .steps ol { margin: 0; padding-left: 20px; font-size: 15px; }
+  .steps li { margin: 4px 0; }
+  .cta { display: block; width: 100%; min-height: 54px; border: 0; border-radius: 99px; background: var(--cta); color: var(--on-cta); font-weight: 700; font-size: 17px; cursor: pointer; }
+  .cta[disabled] { background: #555; color: #999; cursor: default; }
+  .note { color: var(--muted); font-size: 13px; text-align: center; margin-top: 14px; }
+  .card-skip { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 16px; margin-bottom: 18px; cursor: pointer; }
+  .card-skip.on { border-color: var(--accent); }
+  .card-skip input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+  .card-skip strong { display: block; font-size: 16px; }
+  .card-skip span { color: var(--muted); font-size: 13px; }
+  .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 6px 0 14px; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  label.field { display: block; margin-bottom: 14px; font-size: 14px; color: var(--muted); }
+  label.field input { display: block; width: 100%; margin-top: 6px; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); }
+  .consent { margin: 8px 0 20px; font-size: 14px; }
+  .consent label { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
+  .consent input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .consent details { color: var(--muted); font-size: 13px; margin: 0 0 6px 30px; }
+  .progress { display: flex; gap: 6px; margin: 4px 0 8px; }
+  .progress i { flex: 1; height: 4px; border-radius: 4px; background: var(--line); }
+  .progress i.on { background: var(--accent); }
+  .count { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
+  .eyebrow { color: var(--muted); font-size: 14px; margin-top: 10px; }
+  .options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+  .opt { text-align: left; padding: 15px 16px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text); font-size: 16px; cursor: pointer; }
+  .opt.sel { border-color: var(--text); outline: 2px solid var(--text); }
+  .ab { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .abcard { border: 2px solid var(--line-2); border-radius: 14px; background: var(--surface-2); padding: 8px; cursor: pointer; text-align: center; color: var(--text); }
+  .abcard.sel { border-color: var(--text); }
+  .abimg { aspect-ratio: 4/5; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: #fff; overflow: hidden; }
+  .abimg img { width: 100%; height: 100%; object-fit: contain; }
+  .badge { display: inline-block; margin-top: 8px; padding: 3px 14px; border-radius: 99px; background: #333; font-weight: 700; font-size: 14px; }
+  .badge.ok { background: var(--accent); color: var(--on-accent); }
+  .cap { display: block; font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .explain { background: #111; border-radius: 14px; padding: 16px; margin-bottom: 18px; white-space: pre-line; font-size: 15px; }
+  .explain b { display: block; font-size: 17px; margin-bottom: 6px; }
+  .text-answer { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); margin-bottom: 14px; }
+  .hint { color: var(--muted); font-size: 14px; margin: -4px 0 14px; }
+  .ticket { margin-top: 12px; border-radius: 22px; padding: 26px 22px; text-align: center; color: #111;
+    background: radial-gradient(circle at 15% 10%, #ffffff 0%, #e8f0ff 45%, #c9dafd 100%); position: relative; }
+  .ticket::before, .ticket::after { content: ""; position: absolute; top: 58%; width: 28px; height: 28px; border-radius: 50%; background: var(--page); }
+  .ticket::before { left: -14px; } .ticket::after { right: -14px; }
+  .ticket .kicker { font-size: 13px; letter-spacing: 2px; color: #2563eb; font-weight: 700; }
+  .ticket .title { font-size: 26px; font-weight: 800; margin: 6px 0 14px; }
+  .ticket .no { font-size: 48px; font-weight: 800; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+  .ticket .who { font-size: 15px; margin-top: 4px; }
+  .ticket .perf { border-top: 2px dashed rgba(0,0,0,.2); margin: 18px -6px 14px; }
+  .ticket .msg { font-size: 16px; font-weight: 700; }
+  .ticket .time { font-size: 12px; color: #555; margin-top: 8px; }
+  .placeholder { margin-top: 14px; border: 1px dashed var(--line-2); border-radius: 12px; padding: 10px; font-size: 12px; color: var(--muted); text-align: center; }
+  .staff-done { display: none; margin-top: 10px; font-weight: 700; color: var(--accent); }
+  @media (prefers-reduced-motion: no-preference) { .page { animation: in .25s ease-out; } @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } } }
+</style>
+</head>
+<body>
+<div class="band"><b>VALEN</b><span class="draft">시안 v1</span></div>
+<main>
+
+  <!-- 1. Landing -->
+  <section class="page" id="p-landing">
+    <h1>Valen's Quiz</h1>
+    <p class="sub">당신의 감, 마케팅이랑 맞을까요?</p>
+    <div class="chips">
+      <span class="chip" id="chip-meta">퀴즈 · 2분 · 난이도 ★☆☆☆☆</span>
+      <span class="chip">참여만 해도 100% 증정! 룰렛 경품까지!</span>
+    </div>
+    <div class="steps">
+      <p>참여 방법</p>
+      <ol>
+        <li>명함을 넣거나 참여 정보를 입력해요</li>
+        <li>퀴즈를 풀어요</li>
+        <li>응모권을 스태프에게 보여주세요</li>
+        <li>행운의 룰렛을 돌려요</li>
+      </ol>
+    </div>
+    <button class="cta" id="btn-start">시작하기</button>
+    <p class="note">참여 정보는 행사 운영 목적으로만 사용돼요.</p>
+  </section>
+
+  <!-- 2. Info -->
+  <section class="page" id="p-info" hidden>
+    <h2>참여 정보를 알려주세요</h2>
+    <label class="card-skip" id="card-skip">
+      <input type="checkbox" id="chk-card">
+      <div><strong>명함을 이미 제출했어요</strong><span>체크하면 정보 입력 없이 바로 퀴즈로 넘어가요.</span></div>
+    </label>
+    <div id="info-form">
+      <div class="divider">명함이 없다면 직접 입력</div>
+      <label class="field">이름<input id="f-name" autocomplete="name" maxlength="40"></label>
+      <label class="field">소속(회사명)<input id="f-org" autocomplete="organization" maxlength="80"></label>
+      <label class="field">연락처<input id="f-phone" type="tel" inputmode="numeric" placeholder="010-1234-5678" autocomplete="tel" maxlength="20"></label>
+      <label class="field">이메일<input id="f-email" type="email" inputmode="email" autocomplete="email" maxlength="120"></label>
+      <div class="consent">
+        <label><input type="checkbox" id="c-req"> [필수] 개인정보 수집·이용 동의</label>
+        <details><summary>자세히</summary>수집 항목: 이름, 소속, 연락처, 이메일<br>수집 목적: 경품 지급 및 행사 안내<br>보관 기간: 행사 종료 후 30일 (최종 문구는 확정 후 반영)</details>
+        <label><input type="checkbox" id="c-mkt"> [선택] 마케팅 정보 수신 동의</label>
+      </div>
+    </div>
+    <button class="cta" id="btn-info" disabled>퀴즈 시작하기</button>
+  </section>
+
+  <!-- 3. Quiz -->
+  <section class="page" id="p-quiz" hidden>
+    <div class="progress" id="progress"></div>
+    <div class="count" id="count"></div>
+    <div class="eyebrow" id="q-eyebrow"></div>
+    <h2 id="q-title"></h2>
+    <div id="q-body"></div>
+    <div class="explain" id="q-explain" hidden></div>
+    <button class="cta" id="btn-next" hidden>다음</button>
+  </section>
+
+  <!-- 4. Ticket -->
+  <section class="page" id="p-ticket" hidden>
+    <h2>퀴즈 완료! 응모권이 발급됐어요</h2>
+    <div class="ticket">
+      <div class="kicker">VALEN · LUCKY ROULETTE</div>
+      <div class="title">행운의 룰렛 응모권</div>
+      <div class="no" id="t-no">No. 000</div>
+      <div class="who" id="t-who"></div>
+      <div class="perf"></div>
+      <div class="msg">스태프에게 이 화면을 보여주세요</div>
+      <div class="time" id="t-time"></div>
+      <div class="staff-done" id="t-staff">✓ 룰렛 참여 완료</div>
+    </div>
+    <p class="note">스태프 확인 후 실물 룰렛을 돌릴 수 있어요. 응모권은 1인 1회만 사용할 수 있어요.</p>
+    <div class="placeholder">응모권 디자인은 별도 시안 전달 후 이 영역에 적용됩니다.</div>
+  </section>
+
+</main>
+<script>
+(function () {
+  'use strict';
+  // Quiz content: replace items here to swap questions. type: 'choice' (no right answer),
+  // 'ab' (two creatives, correct = 'A' | 'B'), 'text' (free answer, no grading).
+  var QUESTIONS = [
+    { type: 'choice', eyebrow: '고민 선택', title: '지금 가장 가까운 상황을 선택해주세요.',
+      options: ['신제품을 기획 중이다', '해외 진출을 준비 중이다', '광고 효율 개선이 필요하다', '크리에이터 협업을 검토 중이다', '해당하지 않지만, 발렌을 알고 싶다'],
+      explain: '오후 5시, session 3 첫 번째 강연에서 해결책을 제시해드립니다.' },
+    { type: 'ab', eyebrow: '소재 A/B · 예시', title: '더 오래 게재된 위닝 소재는?',
+      a: { label: '소재 A', caption: '구체적 상황 묘사형', color: '#3b5bdb' },
+      b: { label: '소재 B', caption: '제품명 강조형', color: '#5c5f66' }, correct: 'A',
+      explain: '구체적인 사용 상황을 보여준 소재가 더 오래 살아남았어요.\n(예시 문항입니다. 실제 소재와 해설로 교체됩니다.)' },
+    { type: 'ab', eyebrow: '소재 A/B · 예시', title: '클릭률이 더 높았던 썸네일은?',
+      a: { label: '소재 A', caption: '효능 한 문장', color: '#5c5f66' },
+      b: { label: '소재 B', caption: '사용 전후 궁금증', color: '#3b5bdb' }, correct: 'B',
+      explain: '결과를 다 보여주지 않고 궁금증을 남긴 썸네일이 더 많이 눌렸어요.\n(예시 문항입니다.)' },
+    { type: 'text', eyebrow: '행운퀴즈', title: 'K-뷰티 성장의 핵심은 브랜드 인지도가 아니라\n국가별 OOO를 맞춘 히어로 SKU였습니다.',
+      hint: '힌트: ㅍㅇF', placeholder: '정답을 입력해 주세요',
+      explain: '80개 브랜드 데이터 기반으로 쌓은 Insight와 Valen Agent를 오후 5시 강연에서 보실 수 있습니다.' }
+  ];
+
+  var KEY = 'valen-quiz-v1';
+  function load() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
+  function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage blocked: works for this visit */ } }
+  var state = load();
+
+  function $(id) { return document.getElementById(id); }
+  function show(id) {
+    ['p-landing', 'p-info', 'p-quiz', 'p-ticket'].forEach(function (p) { $(p).hidden = p !== id; });
+    window.scrollTo(0, 0);
+  }
+  $('chip-meta').textContent = QUESTIONS.length + '문항 · 2분 · 난이도 ★☆☆☆☆';
+
+  // Info page
+  function infoValid() {
+    if ($('chk-card').checked) return true;
+    return $('f-name').value.trim() && $('f-phone').value.replace(/\D/g, '').length >= 10 && $('c-req').checked;
+  }
+  function refreshInfo() {
+    var card = $('chk-card').checked;
+    $('card-skip').classList.toggle('on', card);
+    $('info-form').hidden = card;
+    $('btn-info').disabled = !infoValid();
+  }
+  ['chk-card', 'f-name', 'f-org', 'f-phone', 'f-email', 'c-req', 'c-mkt'].forEach(function (id) {
+    $(id).addEventListener('input', refreshInfo); $(id).addEventListener('change', refreshInfo);
+  });
+  $('btn-start').onclick = function () { show('p-info'); refreshInfo(); };
+  $('btn-info').onclick = function () {
+    if (!infoValid()) return;
+    state.entry = $('chk-card').checked ? { card: true } : {
+      card: false, name: $('f-name').value.trim(), org: $('f-org').value.trim(),
+      phone: $('f-phone').value.trim(), email: $('f-email').value.trim(), marketing: $('c-mkt').checked
+    };
+    state.answers = []; state.q = 0; save(state);
+    renderQuestion();
+  };
+
+  // Quiz
+  function renderQuestion() {
+    var i = state.q, q = QUESTIONS[i];
+    show('p-quiz');
+    $('progress').innerHTML = '';
+    QUESTIONS.forEach(function (_, k) { var b = document.createElement('i'); if (k <= i) b.className = 'on'; $('progress').appendChild(b); });
+    $('count').textContent = (i + 1) + ' / ' + QUESTIONS.length;
+    $('q-eyebrow').textContent = 'Q' + (i + 1) + ' · ' + q.eyebrow;
+    $('q-title').textContent = q.title;
+    $('q-explain').hidden = true; $('btn-next').hidden = true;
+    $('btn-next').textContent = i === QUESTIONS.length - 1 ? '응모권 받기' : '다음';
+    var body = $('q-body'); body.innerHTML = '';
+    if (q.type === 'choice') {
+      var list = document.createElement('div'); list.className = 'options';
+      q.options.forEach(function (o) {
+        var b = document.createElement('button'); b.className = 'opt'; b.textContent = o;
+        b.onclick = function () { if (state.answers[i] != null) return; b.classList.add('sel'); answer(i, o, '<b>좋아요!</b>' + esc(q.explain)); };
+        list.appendChild(b);
+      });
+      body.appendChild(list);
+    } else if (q.type === 'ab') {
+      var grid = document.createElement('div'); grid.className = 'ab';
+      ['A', 'B'].forEach(function (side) {
+        var c = q[side.toLowerCase()];
+        var card = document.createElement('button'); card.className = 'abcard'; card.setAttribute('data-side', side);
+        var img = document.createElement('div'); img.className = 'abimg'; img.style.background = c.color;
+        if (c.image) { var im = document.createElement('img'); im.src = c.image; im.alt = c.label; img.appendChild(im); } else { img.textContent = c.label; }
+        var badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = side;
+        var cap = document.createElement('span'); cap.className = 'cap'; cap.textContent = c.caption;
+        card.appendChild(img); card.appendChild(badge); card.appendChild(cap);
+        card.onclick = function () {
+          if (state.answers[i] != null) return;
+          card.classList.add('sel');
+          grid.querySelectorAll('.abcard').forEach(function (x) {
+            var bd = x.querySelector('.badge'), s = x.getAttribute('data-side');
+            bd.textContent = s + (s === q.correct ? ' · 정답' : ' · 오답'); if (s === q.correct) bd.classList.add('ok');
+          });
+          var head = side === q.correct ? '정답이에요!' : '아쉬워요, 정답은 ' + q.correct + '예요';
+          answer(i, side, '<b>' + head + '</b>' + esc(q.explain));
+        };
+        grid.appendChild(card);
+      });
+      body.appendChild(grid);
+    } else {
+      var hint = document.createElement('p'); hint.className = 'hint'; hint.textContent = q.hint;
+      var inp = document.createElement('input'); inp.className = 'text-answer'; inp.placeholder = q.placeholder; inp.maxLength = 40;
+      var go = document.createElement('button'); go.className = 'cta'; go.textContent = '확인';
+      go.onclick = function () { if (state.answers[i] != null) return; go.hidden = true; inp.disabled = true; answer(i, inp.value.trim(), '<b>참여 완료!</b>' + esc(q.explain)); };
+      body.appendChild(hint); body.appendChild(inp); body.appendChild(go);
+    }
+  }
+  function answer(i, value, html) {
+    state.answers[i] = value; save(state);
+    $('q-explain').innerHTML = html; $('q-explain').hidden = false; $('btn-next').hidden = false;
+  }
+  $('btn-next').onclick = function () {
+    if (state.q < QUESTIONS.length - 1) { state.q += 1; save(state); renderQuestion(); return; }
+    if (!state.ticket) {
+      // Draft only: a device-local number. The connected version assigns the number on the server.
+      state.ticket = { no: 1 + Math.floor(Math.random() * 999), at: new Date().toISOString() };
+      save(state);
+    }
+    renderTicket();
+  };
+  function renderTicket() {
+    show('p-ticket');
+    $('t-no').textContent = 'No. ' + String(state.ticket.no).padStart(3, '0');
+    $('t-who').textContent = state.entry && !state.entry.card && state.entry.name ? state.entry.name + (state.entry.org ? ' · ' + state.entry.org : '') : '명함 제출 참여자';
+    var d = new Date(state.ticket.at);
+    $('t-time').textContent = '발급 ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  // Resume: one ticket per device.
+  if (state.ticket) renderTicket();
+  else if (state.entry && state.answers && state.q != null) renderQuestion();
+  else show('p-landing');
+})();
+</script>
+</body>
+</html>
