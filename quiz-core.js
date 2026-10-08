@@ -69,7 +69,7 @@
     statusUnused: '스태프에게 이 화면을 보여주세요',
     statusUsedPrefix: '룰렛 참여 완료',
     recheck: '상태 다시 확인',
-    demoWatermark: '미리보기 · 사용 불가'
+    demoWatermark: '미리보기 (사용 불가)'
   };
 
   // ---------------------------------------------------------------- small helpers
@@ -631,7 +631,7 @@
     if (o.check === 'not_found') { status = 'unknown'; }
     var statusText = {
       unused: COPY.statusUnused,
-      used: COPY.statusUsedPrefix + (redeemedLabel ? ' · ' + redeemedLabel : ''),
+      used: COPY.statusUsedPrefix + (redeemedLabel ? ' (' + redeemedLabel + ')' : ''),
       unknown: COPY.statusUnknown,
       checking: COPY.statusChecking
     }[status];

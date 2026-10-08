@@ -1,7 +1,9 @@
 # Valen Quiz (A-DAY 2026 booth)
 
 Static participant page served by GitHub Pages so the printed QR never depends on Google account routing.
-The page shows the landing, info, quiz and saving screens, and saves through a JSON API (Apps Script, fetch only).
+The page shows the landing, info, quiz and saving screens, then the numbered ticket with a live clock and a staff panel
+(PIN, then mark the ticket used before the roulette spins). After a reload it shows the stored ticket and checks its status once.
+It saves through a JSON API (Apps Script, fetch only).
 
 ## Permanence rule
 
@@ -35,5 +37,7 @@ node --test
 py -m http.server 8765 --directory "C:\CLAUDE\valen-quiz-web"
 ```
 
-Then open `http://localhost:8765/?demo=1` in a 390x844 window. `?demo=1` runs without the API (no network call, separate `demo:` storage keys), shows the `미리보기`
-badge and issues in-memory tickets that cannot be used. Without `demo`, the page calls the live API.
+Then open `http://localhost:8765/?demo=1` in a 390x844 window. `?demo=1` makes no call to the quiz API (no config, submit, ticket or
+redeem request) and uses separate `demo:` storage keys; it shows the `미리보기` badge, marks tickets `미리보기 (사용 불가)` and issues in-memory tickets that cannot be used.
+The optional Pretendard font still loads from jsdelivr in both modes and the page renders fully with the system font when it is blocked.
+Without `demo`, the page calls the live API.

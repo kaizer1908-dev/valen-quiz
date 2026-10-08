@@ -4,7 +4,7 @@
  * Static checks read the page as text and compile its inline scripts with node:vm.
  * "run" tests execute the real page scripts against a small hand-written fake DOM (no browser, no jsdom,
  * no network): a fake fetch, a fake clock and an in-memory storage are injected.
- * Run (Korean): node --test test/page.test.js
+ * Run: node --test test/page.test.js
  * Fixtures use fake values only (phones 010-0000-xxxx, name 테스트참가자, staff PIN 7391 inside this file only).
  */
 const test = require('node:test');
@@ -154,11 +154,13 @@ test('F2r page: boot copy, phone input and answer input attributes are pinned', 
 });
 
 test('F2r page: async callbacks are guarded and both global error handlers are registered', () => {
-  assert.ok(/addEventListener\('error'/.test(scripts[0]) && /addEventListener\('unhandledrejection'/.test(scripts[0]));
-  // Every promise callback that touches the page goes through guard().
-  const thens = app.match(/\.then\((guard\()?function|\.then\(guard\(\w+\)\)/g) || [];
+  assert.ok(/addEventListener\('error'/.test(scripts[0]));
+  // In-app browsers inject unhandled rejections of their own, so only the error event is listened to.
+  assert.ok(!/unhandledrejection/.test(scripts[0] + app));
+  // Every promise callback that touches the page goes through guard(), whether it is inline or a named function.
+  const thens = app.split('.then(').slice(1);
   assert.ok(thens.length >= 4, 'expected to find the promise callbacks');
-  thens.forEach((t) => assert.ok(/guard/.test(t), 'a .then callback is not wrapped in guard(): ' + t));
+  thens.forEach((t) => assert.ok(t.startsWith('guard('), 'a .then callback is not wrapped in guard(): .then(' + t.slice(0, 30)));
 });
 
 // ============================================================================================ static: F3
@@ -468,18 +470,18 @@ test('F3r run: the clock ticks every second and a redeemed demo ticket stays use
   const t0 = h.text('ticket-clock');
   await clock.advance(1000);
   assert.notStrictEqual(h.text('ticket-clock'), t0, 'the clock moved after one second');
-  assert.strictEqual(h.text('ticket-demo'), '미리보기 · 사용 불가');
+  assert.strictEqual(h.text('ticket-demo'), '미리보기 (사용 불가)');
   assert.strictEqual(h.text('ticket-status'), '스태프에게 이 화면을 보여주세요');
   h.click(h.byId['staff-toggle']);
   assert.strictEqual(h.byId['staff-panel'].hidden, false);
   h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']); await settle();
-  assert.strictEqual(h.text('staff-result'), '처리 완료 · 룰렛을 돌려 주세요');
+  assert.strictEqual(h.text('staff-result'), '미리보기 (사용 불가)', 'a preview ticket never says to spin');
+  assert.ok(h.byId['staff-result'].className.indexOf('bad') !== -1 && h.byId['staff-result'].className.indexOf('ok') === -1);
   assert.strictEqual(h.byId['staff-pin'].value, '', 'the PIN field is cleared');
-  assert.ok(/^룰렛 참여 완료 · \d\d:\d\d$/.test(h.text('ticket-status')));
+  assert.ok(/^룰렛 참여 완료 \(\d\d:\d\d\)$/.test(h.text('ticket-status')));
   assert.ok(h.byId['ticket-slot'].classList.contains('used'));
   h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']); await settle();
-  assert.ok(/^이미 사용된 응모권이에요 \(\d\d:\d\d\)\. 룰렛을 다시 돌리지 마세요\.$/.test(h.text('staff-result')));
-  assert.ok(h.byId['staff-result'].className.indexOf('bad') !== -1);
+  assert.strictEqual(h.text('staff-result'), '미리보기 (사용 불가)');
   // reload: the same session storage, a fresh page
   const h2 = boot({ search: '?demo=1', session, clock });
   await settle();
@@ -491,7 +493,8 @@ test('F3r run: the clock ticks every second and a redeemed demo ticket stays use
   const h3 = boot({ search: '?demo=1', session: makeStorage({ 'demo:valen-quiz:v3': storedState(mkTicket(5, { demo: true, eventId: 'demo-preview' }), { eventId: 'demo-preview' }) }), clock });
   await settle();
   h3.type(h3.byId['staff-pin'], PIN); h3.click(h3.byId['staff-redeem']); await settle();
-  assert.strictEqual(h3.text('staff-result'), '처리 완료 · 룰렛을 돌려 주세요');
+  assert.strictEqual(h3.text('staff-result'), '미리보기 (사용 불가)');
+  assert.ok(/^룰렛 참여 완료 \(\d\d:\d\d\)$/.test(h3.text('ticket-status')), 'the preview ticket is still marked used locally');
 });
 
 test('F3r run: the redeem requestId persists across re-taps until a definitive answer; the PIN is cleared and never stored', async () => {
@@ -516,15 +519,18 @@ test('F3r run: the redeem requestId persists across re-taps until a definitive a
   assert.strictEqual(f.posts('redeem').length, 0, 'a PIN of the wrong length is not sent');
   h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']);
   assert.strictEqual(h.byId['staff-pin'].value, '', 'cleared at once');
+  await h.advance(100);
+  assert.strictEqual(h.text('staff-result'), '연결이 잠시 불안정해요. 자동으로 다시 시도할게요.', 'the K1 retry copy during the backoff');
   await h.advance(20000);
   assert.strictEqual(f.posts('redeem').length, 3, 'three automatic attempts');
   assert.strictEqual(h.byId['staff-redeem'].disabled, false, 'the staff can tap again');
-  assert.strictEqual(h.text('staff-result'), '연결이 잠시 불안정해요. 자동으로 다시 시도할게요.');
+  assert.strictEqual(h.text('staff-result'), "연결이 불안정해요. '룰렛 완료 처리'를 다시 눌러 주세요.", 'after the last attempt: what to do');
   failing = false;
   h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']); await settle();
   const ids = f.posts('redeem').map((p) => p.requestId);
   assert.strictEqual(new Set(ids).size, 1, 'the same requestId on every attempt and re-tap: ' + ids.join(','));
-  assert.strictEqual(h.text('staff-result'), '처리 완료 · 룰렛을 돌려 주세요');
+  assert.strictEqual(h.text('staff-result'), '처리 완료. 룰렛을 돌려 주세요');
+  assert.ok(h.byId['staff-result'].className.indexOf('ok') !== -1);
   assert.ok(h.byId['ticket-slot'].classList.contains('used'));
   // a new tap after the final answer is a new request
   h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']); await settle();
@@ -547,7 +553,7 @@ test('F3r run: reload shows the stored status first; used never goes back to unu
   assert.strictEqual(h1.text('ticket-status'), '확인 중');
   assert.ok(h1.byId['ticket-slot'].classList.contains('used'), 'the stored used state shows while checking');
   release(); await settle();
-  assert.strictEqual(h1.text('ticket-status'), '룰렛 참여 완료 · 15:10');
+  assert.strictEqual(h1.text('ticket-status'), '룰렛 참여 완료 (15:10)');
   assert.strictEqual(JSON.parse(local1.map.get(STORE_KEY)).ticket.redeemed, true);
   assert.strictEqual(f1.posts('ticket').length, 1, 'exactly one status call');
   // 2. TICKET_NOT_FOUND
@@ -569,13 +575,60 @@ test('F3r run: reload shows the stored status first; used never goes back to unu
   assert.strictEqual(h3.text('ticket-recheck'), '상태 다시 확인');
   online = true;
   h3.click(h3.byId['ticket-recheck']); await settle();
-  assert.strictEqual(h3.text('ticket-status'), '룰렛 참여 완료 · 15:10');
+  assert.strictEqual(h3.text('ticket-status'), '룰렛 참여 완료 (15:10)');
   assert.strictEqual(h3.byId['ticket-recheck'].hidden, true);
   // 4. a config for another event clears the stored ticket and returns to the landing
   const f4 = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ eventId: 'phonetest-1012' })) : env({ ticket: mkTicket(4) })));
   const h4 = boot({ fetch: f4, local: makeStorage({ [STORE_KEY]: storedState(mkTicket(4)) }) });
   await settle();
   assert.deepStrictEqual(h4.page(), ['p-landing']);
+});
+
+test('F3r run: TICKET_NOT_FOUND from a redeem shows 확인 불가; a redeem answer after the page moved on is ignored; a config reset clears the staff panel', async () => {
+  // r4
+  const f1 = fakeFetch((url, init) => {
+    if (init.method === 'GET') { return env(cfgData()); }
+    return JSON.parse(init.body).action === 'ticket' ? env({ ticket: mkTicket(8) }) : errEnv('TICKET_NOT_FOUND', false);
+  });
+  const h1 = boot({ fetch: f1, local: makeStorage({ [STORE_KEY]: storedState(mkTicket(8)) }) });
+  await settle();
+  h1.click(h1.byId['staff-toggle']);
+  h1.type(h1.byId['staff-pin'], PIN); h1.click(h1.byId['staff-redeem']); await settle();
+  assert.strictEqual(h1.text('staff-result'), '응모권을 확인할 수 없어요. 부스 스태프에게 이 화면을 보여주세요.');
+  assert.strictEqual(h1.text('ticket-status'), '확인 불가');
+  // r2 and r3: the redeem answer arrives after a config for another event reset the page
+  let release;
+  const slow = new Promise((resolve) => { release = () => resolve({ text: () => Promise.resolve(env({ status: 'REDEEMED', ticket: mkTicket(9, { redeemed: true, redeemedLabel: '15:10' }), timing: {} })) }); });
+  let cfgRelease;
+  const slowCfg = new Promise((resolve) => { cfgRelease = () => resolve({ text: () => Promise.resolve(env(cfgData({ eventId: 'phonetest-1012' }))) }); });
+  const f2 = fakeFetch((url, init) => {
+    if (init.method === 'GET') { return slowCfg; }
+    return JSON.parse(init.body).action === 'ticket' ? env({ ticket: mkTicket(9) }) : slow;
+  });
+  const local2 = makeStorage({ [STORE_KEY]: storedState(mkTicket(9)) });
+  const h2 = boot({ fetch: f2, local: local2 });
+  await settle();
+  h2.click(h2.byId['staff-toggle']);
+  h2.type(h2.byId['staff-pin'], PIN); h2.click(h2.byId['staff-redeem']); await settle();
+  cfgRelease(); await settle(); // the other event resets the page while the redeem is in flight
+  assert.deepStrictEqual(h2.page(), ['p-landing']);
+  release(); await settle();
+  assert.strictEqual(h2.text('staff-result'), '', 'a late redeem answer does not write into the new page');
+  assert.ok(!JSON.parse(local2.map.get(STORE_KEY) || '{}').ticket, 'the old ticket was not written back');
+  // r3: a result that is on screen when the config resets the page is cleared and the panel is closed
+  let cfgRelease3;
+  const slowCfg3 = new Promise((resolve) => { cfgRelease3 = () => resolve({ text: () => Promise.resolve(env(cfgData({ eventId: 'phonetest-1012' }))) }); });
+  const f3 = fakeFetch((url, init) => (init.method === 'GET' ? slowCfg3 : env({ ticket: mkTicket(10) })));
+  const h3 = boot({ fetch: f3, local: makeStorage({ [STORE_KEY]: storedState(mkTicket(10)) }) });
+  await settle();
+  h3.click(h3.byId['staff-toggle']);
+  h3.type(h3.byId['staff-pin'], '12'); h3.click(h3.byId['staff-redeem']); await settle();
+  assert.strictEqual(h3.text('staff-result'), '확인 번호가 맞지 않아요.', 'a result is on screen before the reset');
+  cfgRelease3(); await settle();
+  assert.deepStrictEqual(h3.page(), ['p-landing']);
+  assert.strictEqual(h3.byId['staff-panel'].hidden, true, 'the staff panel is closed');
+  assert.strictEqual(h3.byId['staff-toggle'].getAttribute('aria-expanded'), 'false');
+  assert.strictEqual(h3.text('staff-result'), '');
 });
 
 test('F2r run: a throwing async callback shows the boot card and keeps a valid ticket visible', async () => {

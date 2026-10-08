@@ -262,7 +262,6 @@
     var own = typeof source === 'string' && source.indexOf(window.location.protocol + '//' + window.location.host) === 0;
     if (own && ev.message !== 'Script error.') { showBoot(); }
   });
-  window.addEventListener('unhandledrejection', showBoot);
   if (!window.QuizCore || !window.VALEN_QUIZ_DEFAULTS) { showBoot(); }
 })();
 </script>
@@ -352,6 +351,9 @@
         state = r.state;
         content = null;
         ticketCheck = ''; ticketExisting = ''; redeemReq = ''; // nothing of the old ticket carries over
+        staffResult('', '');
+        $('staff-panel').hidden = true;
+        $('staff-toggle').setAttribute('aria-expanded', 'false');
 
         if (current !== 'p-wait') { show('p-landing'); }
       }
@@ -783,22 +785,27 @@
       ticket.redeemedAt = d.toISOString();
       ticket.redeemedLabel = (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
     }
-    return { ok: true, data: { status: first ? 'REDEEMED' : 'ALREADY_REDEEMED', ticket: ticket } };
+    return { ok: true, demo: true, data: { status: first ? 'REDEEMED' : 'ALREADY_REDEEMED', ticket: ticket } };
   }
+  var REDEEM_GAVE_UP = "연결이 불안정해요. '룰렛 완료 처리'를 다시 눌러 주세요.";
   function finishRedeem(r) {
     var good = r.ok && r.data && r.data.ticket && (r.data.status === 'REDEEMED' || r.data.status === 'ALREADY_REDEEMED');
     if (r.ok && !good) { r = { ok: false, code: 'BAD_RESPONSE', retryable: true, message: Q.errorCopy('BAD_RESPONSE') }; }
     if (!r.ok) {
       if (!r.retryable) { redeemReq = ''; } // definitive refusal; a retryable failure keeps the requestId for the next tap
-      staffResult(r.message || Q.errorCopy(r.code), 'bad');
+      if (r.code === 'TICKET_NOT_FOUND') { ticketCheck = 'not_found'; paintTicket(); }
+      // Out of automatic attempts: the K1 retry copy promises more retries, so say what the staff member should do.
+      staffResult(r.retryable ? REDEEM_GAVE_UP : (r.message || Q.errorCopy(r.code)), 'bad');
       return;
     }
     redeemReq = ''; // REDEEMED and ALREADY_REDEEMED are both final
     applyServerTicket(r.data.ticket);
     ticketCheck = '';
     paintTicket();
-    if (r.data.status === 'REDEEMED') {
-      staffResult('처리 완료 · 룰렛을 돌려 주세요', 'ok');
+    if (r.demo) {
+      staffResult(Q.COPY.demoWatermark, 'bad'); // a preview ticket never tells the staff to spin the roulette
+    } else if (r.data.status === 'REDEEMED') {
+      staffResult('처리 완료. 룰렛을 돌려 주세요', 'ok');
     } else {
       var at = Q.ticketViewModel(state.ticket, Date.now).redeemedLabel;
       staffResult('이미 사용된 응모권이에요' + (at ? ' (' + at + ')' : '') + '. 룰렛을 다시 돌리지 마세요.', 'bad');
@@ -820,6 +827,7 @@
       redeeming = false;
       $('staff-redeem').disabled = false;
       if (r.code === 'IN_FLIGHT') { return; }
+      if (!state || !state.ticket || state.ticket.ticketId !== t.ticketId) { return; } // the page moved on meanwhile
       finishRedeem(r);
     }));
   });

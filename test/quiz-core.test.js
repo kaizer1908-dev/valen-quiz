@@ -607,7 +607,7 @@ test('F1 ticket: view model labels No. 042, issue and used times, status unused/
 
   const used = QC.ticketViewModel(Object.assign({}, TICKET, { redeemed: true, redeemedAt: '2026-10-14T06:10:00.000Z', redeemedLabel: '15:10' }), now);
   assert.strictEqual(used.status, 'used');
-  assert.strictEqual(used.statusText, '룰렛 참여 완료 · 15:10');
+  assert.strictEqual(used.statusText, '룰렛 참여 완료 (15:10)');
   assert.strictEqual(used.redeemed, true);
 
   // labels derived from the number and ISO time when the server labels are absent
@@ -627,7 +627,7 @@ test('F1 ticket: view model labels No. 042, issue and used times, status unused/
   assert.strictEqual(QC.ticketViewModel(TICKET, now).note, '');
   const demo = QC.ticketViewModel(Object.assign({}, TICKET, { demo: true }), now);
   assert.strictEqual(demo.demo, true);
-  assert.strictEqual(demo.demoWatermark, '미리보기 · 사용 불가');
+  assert.strictEqual(demo.demoWatermark, '미리보기 (사용 불가)');
 });
 
 test('F1 demo: demo api issues a demo-flagged ticket and never calls fetch', async () => {
