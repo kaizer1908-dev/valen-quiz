@@ -147,7 +147,7 @@
         <label class="field">이름<span class="req" aria-hidden="true"> *</span><input id="field-name" data-testid="field-name" autocomplete="name" maxlength="40" required></label>
         <label class="field">소속<input id="field-org" data-testid="field-org" autocomplete="organization" maxlength="80"></label>
         <label class="field">휴대폰 번호<span class="req" aria-hidden="true"> *</span><input id="field-phone" data-testid="field-phone" type="tel" inputmode="numeric" placeholder="010-1234-5678" autocomplete="tel" maxlength="20" required></label>
-        <label class="field">이메일<input id="field-email" data-testid="field-email" type="email" inputmode="email" autocomplete="email" maxlength="120"></label>
+        <label class="field">이메일<input id="field-email" data-testid="field-email" type="email" inputmode="email" autocomplete="email" maxlength="254"></label>
         <div class="consent">
           <label><input type="checkbox" id="consent-required" data-testid="consent-required"> [필수] 개인정보 수집·이용 동의</label>
           <details><summary>자세히</summary>
@@ -246,13 +246,19 @@
   var IMAGE_WAIT_MS = 8000;    // an A/B image that has not loaded by now becomes a caption box
   var PAGES = ['p-landing', 'p-info', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'];
   // Shown only in ?demo=1 so both the card path and the info path can be walked before the real text exists.
-  var DEMO_CONSENT = '미리보기용 동의 안내예요. 실제로 저장되는 정보는 없어요.';
+  var DEMO_CONFIG = {
+    eventId: 'demo-preview', registrationOpen: true, infoPathReady: true, contentVersion: 'demo', contentReady: false, questions: null,
+    consent: { version: 'demo', collectedItems: D.embedded.consent.collectedItems, requiredDetail: '미리보기용 동의 안내예요. 실제로 저장되는 정보는 없어요.', marketingDetail: '', privacyNoticeUrl: '' }
+  };
 
   var demo = /[?&]demo=1(?:&|$)/.test(window.location.search);
+  // ?demo=1 never calls the network (in-memory demo api for config and tickets) and never touches the real
+  // storage keys: every storage call below receives this prefix.
+  var SO = { prefix: demo ? 'demo:' : '' };
   var storage = openStorage();
   var api = demo ? Q.createDemoApi() : Q.createApi({ url: D.apiUrl, build: D.build });
-  var deviceId = Q.getDeviceId(storage);
-  var state = Q.loadState(storage, Date.now); // null when nothing is stored
+  var deviceId = Q.getDeviceId(storage, undefined, SO); // once per page load
+  var state = Q.loadState(storage, Date.now, SO); // null when nothing is stored
   var cfg = { status: 'pending', data: null }; // pending | done | fallback
   var content = null;       // effective content, fixed when the quiz begins (a late config never changes it)
   var waiter = null;        // callback parked while the config is awaited
@@ -265,22 +271,19 @@
   function $(id) { return document.getElementById(id); }
   function blank(v) { return v === null || v === undefined || String(v).trim() === ''; }
 
-  // Storage fails soft (private mode, blocked). In demo the data lives in sessionStorage under its own prefix,
-  // so a preview ticket can never be mistaken for a real one.
+  // Storage fails soft (private mode, blocked): even reading window.localStorage can throw, so it sits in the try.
+  // Demo uses sessionStorage (a reload keeps the preview, a new tab starts a clean walkthrough); the real page
+  // uses localStorage. The key prefix, not the storage object, keeps the two apart.
   function openStorage() {
     try {
       var base = demo ? window.sessionStorage : window.localStorage;
-      var prefix = demo ? 'demo:' : '';
-      base.setItem(prefix + 'valen-quiz:probe', '1');
-      base.removeItem(prefix + 'valen-quiz:probe');
-      return {
-        getItem: function (k) { return base.getItem(prefix + k); },
-        setItem: function (k, v) { base.setItem(prefix + k, v); },
-        removeItem: function (k) { base.removeItem(prefix + k); }
-      };
+      var probe = Q.storageKeys(SO).state + '.probe';
+      base.setItem(probe, '1');
+      base.removeItem(probe);
+      return base;
     } catch (e) { return null; }
   }
-  function persist() { Q.saveState(storage, state, Date.now); }
+  function persist() { Q.saveState(storage, state, Date.now, SO); }
   function effective() { return Q.effectiveContent(cfg.data, D.embedded); }
   function configEventId() { return cfg.status === 'done' && cfg.data ? cfg.data.eventId : ''; }
 
@@ -291,9 +294,9 @@
     var h = $(id).querySelector('h1, h2');
     if (h) { h.setAttribute('tabindex', '-1'); h.focus({ preventScroll: true }); }
   }
-  function showError(code) {
+  function showError(code, message) {
     $('p-error').setAttribute('data-error-code', code);
-    $('error-text').textContent = Q.errorCopy(code);
+    $('error-text').textContent = message || Q.errorCopy(code); // textContent only: a server message is never markup
     show('p-error');
   }
 
@@ -301,16 +304,12 @@
   function onConfig(res) {
     if (res.ok) {
       cfg = { status: 'done', data: res.data };
-      if (demo) { // the demo server has no real consent text, so supply one
-        cfg.data.consent = Object.assign({}, cfg.data.consent, { requiredDetail: DEMO_CONSENT, collectedItems: D.embedded.consent.collectedItems });
-        cfg.data.infoPathReady = true;
-      }
     } else {
       cfg = { status: 'fallback', data: null };
     }
     // A different event id means stored progress or a stored ticket belongs to an earlier test: start over.
     if (cfg.status === 'done' && state && current !== 'p-saving') {
-      var r = Q.resetForEvent(storage, state, cfg.data.eventId);
+      var r = Q.resetForEvent(storage, state, cfg.data.eventId, SO);
       if (r.reset) {
         state = r.state;
         content = null;
@@ -381,8 +380,13 @@
     $('info-fields').hidden = card;
     updateGate();
   }
+  // Version of the consent text on screen. If the text changes after the box was ticked, the tick is withdrawn.
+  var shownConsentVersion = '';
   function renderConsent() {
     var c = effective().consent || {};
+    var v = c.version || '';
+    if (shownConsentVersion && v !== shownConsentVersion) { $('consent-required').checked = false; $('consent-marketing').checked = false; }
+    shownConsentVersion = v;
     $('consent-items').textContent = c.collectedItems || D.embedded.consent.collectedItems;
     $('consent-detail').textContent = c.requiredDetail || '';
     var url = c.privacyNoticeUrl || '';
@@ -398,12 +402,15 @@
     $('field-org').value = info.organization || '';
     $('field-phone').value = info.phone || '';
     $('field-email').value = info.email || '';
-    $('consent-required').checked = consent.required === true;
-    $('consent-marketing').checked = consent.marketing === true;
     $('card-skip').checked = state.entryType === 'card';
+    state.stage = 'info'; // routeOnLoad sends stage "info" back here after a reload
+    persist();
     hideInfoError();
     show('p-info');
     renderConsent();
+    var sameText = consent.version === shownConsentVersion; // a stored tick counts only for the text it was given on
+    $('consent-required').checked = consent.required === true && sameText;
+    $('consent-marketing').checked = consent.marketing === true && sameText;
     syncCard();
     if (errorCode) { showInfoError(errorCode, FIELD_OF_CODE[errorCode] || '', false); }
   }
@@ -423,7 +430,7 @@
       var consent = {
         required: $('consent-required').checked,
         marketing: $('consent-marketing').checked && !$('marketing-box').hidden,
-        version: eff.consent ? eff.consent.version : ''
+        version: shownConsentVersion
       };
       var v = Q.validateInfo('info', info, consent, eff.infoPathReady);
       if (!v.ok) { showInfoError(v.code, v.field, false); return; }
@@ -468,6 +475,23 @@
     if (q.type === 'choice') { buildChoice(q, i); }
     else if (q.type === 'ab') { buildAb(q, i); }
     else { buildText(q, i); }
+    if (!blank(state.answers[q.id])) { restoreAnswer(q, state.answers[q.id]); }
+  }
+  // A question already answered (stored progress) comes back locked, with its feedback and the next button.
+  function restoreAnswer(q, value) {
+    locked = true;
+    var group = q.type === 'choice' ? $('q-choice') : $('q-ab');
+    if (q.type === 'choice' || q.type === 'ab') {
+      Array.prototype.forEach.call(group.querySelectorAll('button'), function (b) {
+        b.disabled = true;
+        if ((q.type === 'choice' ? b.textContent : b.getAttribute('data-side')) === value) { b.classList.add('sel'); }
+      });
+    } else {
+      $('q-answer').value = value;
+      $('q-answer').disabled = true;
+      $('q-confirm').hidden = true;
+    }
+    showFeedback(q, value);
   }
   function buildChoice(q, i) {
     var box = $('q-choice');
@@ -546,6 +570,9 @@
     locked = true;
     state.answers[q.id] = value;
     persist();
+    showFeedback(q, value);
+  }
+  function showFeedback(q, value) {
     var g = Q.gradeForDisplay(q, value);
     $('q-head').textContent = g === true ? '정답이에요!' : (g === false ? '아쉬워요!' : '좋아요!');
     $('q-correct').hidden = g !== false;
@@ -573,8 +600,16 @@
   function stopTick() { if (saving && saving.tick) { clearInterval(saving.tick); saving.tick = null; } }
   // resend = true re-sends the stored pending body unchanged (same requestId), after a reload mid-save.
   function startSaving(resend) {
-    show('p-saving');
+    if (api.busy('submit')) { return; } // a second tap must not replace the body of the request in flight
     var body;
+    if (!resend && state.entryType !== 'card' && state.entryType !== 'info') { // buildSubmitBody refuses anything else
+      state.stage = 'info';
+      persist();
+      renderInfo('');
+      return;
+    }
+    show('p-saving');
+    state.stage = 'saving';
     if (resend && state.pending && state.pending.body) {
       body = state.pending.body;
     } else {
@@ -592,7 +627,9 @@
     renderSaving();
     stopTick();
     saving.tick = setInterval(renderSaving, 1000); // the 8 second "slow" message appears without any other event
-    Q.submitWithPending(api, storage, state, saving.body, Date.now).then(function (res) {
+    var body = state.pending && state.pending.body ? state.pending.body : saving.body; // the stored body: same requestId
+    Q.submitWithPending(api, storage, state, body, Date.now, SO).then(function (res) {
+      if (res.response.code === 'IN_FLIGHT') { return; } // the request already in flight reports for itself
       saving.inFlight = false;
       stopTick();
       state = res.state;
@@ -618,7 +655,6 @@
       renderTicket();
       return;
     }
-    if (r.code === 'IN_FLIGHT') { return; }
     if (r.action === 'back-to-info') { renderInfo(r.code); return; }
     if (r.retryable) { // out of automatic attempts: keep the screen, keep the manual button
       saving.exhausted = true;
@@ -626,7 +662,7 @@
       renderSaving();
       return;
     }
-    showError(r.code);
+    showError(r.code, r.message);
   }
 
   // ------------------------------------------------------------------ ticket (placeholder until slice F3)
@@ -642,7 +678,7 @@
 
   // ------------------------------------------------------------------ start
   $('demo-badge').hidden = !demo;
-  api.config().then(onConfig);
+  if (demo) { onConfig({ ok: true, data: DEMO_CONFIG }); } else { api.config().then(onConfig); }
   route();
 })();
 </script>

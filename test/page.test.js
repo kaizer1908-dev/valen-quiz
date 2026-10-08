@@ -44,6 +44,11 @@ test('F2 page: required data-testid hooks exist', () => {
   hooks.forEach((h) => {
     assert.ok(markup.indexOf('data-testid="' + h + '"') !== -1, 'missing data-testid="' + h + '" in the static markup');
   });
+  // Input limits match the server (name 40, organization 80, email 254).
+  [['field-name', 40], ['field-org', 80], ['field-email', 254]].forEach(([id, max]) => {
+    const tag = markup.match(new RegExp('<input[^>]*data-testid="' + id + '"[^>]*>'));
+    assert.ok(tag && tag[0].indexOf('maxlength="' + max + '"') !== -1, id + ' needs maxlength ' + max);
+  });
   // The error card carries the code it shows.
   assert.ok(/data-testid="error-card"[^>]*data-error-code=/.test(markup), 'error-card needs data-error-code');
 });
@@ -59,6 +64,15 @@ test('F2 page: no google.script, iframe, script.google.com navigation, pushState
     /window\.open\s*\(/
   ];
   mutations.forEach((re) => assert.ok(!re.test(html), 'the page must not change the URL: ' + re));
+  // Demo must not touch the real storage keys or the network: every storage call passes the prefix options,
+  // and the real api is only created when demo is off.
+  const app = scripts[scripts.length - 1];
+  const storageCalls = app.match(/Q\.(loadState|saveState|resetForEvent|submitWithPending|getDeviceId)\([^)]*\)/g) || [];
+  assert.ok(storageCalls.length >= 5, 'expected the storage calls to be found');
+  storageCalls.forEach((c) => assert.ok(/\bSO\b/.test(c),'storage call without the prefix options: ' + c));
+  assert.ok(/demo \? Q\.createDemoApi\(\) : Q\.createApi\(/.test(app), 'demo must use the in-memory api');
+  assert.strictEqual((app.match(/api\.config\(\)/g) || []).length, 1, 'api.config() is called in exactly one place');
+  assert.ok(/if \(demo\) \{ onConfig\(\{ ok: true, data: DEMO_CONFIG \}\); \} else \{ api\.config\(\)/.test(app), 'demo must not call api.config()');
   // The staff PIN value never appears here, and no Config key is needed on this page.
   assert.strictEqual(html.indexOf('246810'), -1);
 });
