@@ -1,11 +1,11 @@
 /*
  * defaults.js - build id, public API address and the embedded fallback content for the Valen quiz page.
  *
- * How to open (Korean): 화면이 없는 설정 파일입니다. index.html 이 <script src="defaults.js?v=빌드">
- * 로 불러 window.VALEN_QUIZ_DEFAULTS 로 씁니다. 이 저장소는 공개이므로 비밀번호, 시트 ID, 스태프 PIN,
- * 실제 개인정보를 절대 넣지 않습니다. 실행 주소(exec URL)는 공개 값이라 넣어도 됩니다.
+ * How to use: this file has no UI. index.html loads it with <script src="defaults.js?v=BUILD"> and reads
+ * window.VALEN_QUIZ_DEFAULTS. The repository is PUBLIC: never put passwords, Sheet IDs, the staff PIN or
+ * real personal data here. The exec URL is public by nature and may be embedded.
  *
- * Placeholders that start with "[입력 필요]" stay until slice F5 replaces them with the approved text.
+ * Placeholder values (the Korean "input needed" markers) stay until slice F5 replaces them with the approved text.
  */
 (function (root) {
   'use strict';

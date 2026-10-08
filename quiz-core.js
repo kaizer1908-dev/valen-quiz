@@ -1,9 +1,8 @@
 /*
  * quiz-core.js - pure logic for the Valen quiz page (contract K1 / K3, apiVersion 3).
  *
- * How to open (Korean): 이 파일은 화면이 없는 로직 모듈입니다. 브라우저에서는 index.html 이
- * <script src="quiz-core.js"> 로 불러 window.QuizCore 로 쓰고, 테스트는 터미널에서
- * `node --test test/quiz-core.test.js` 로 실행합니다.
+ * How to use: this file has no UI. In the browser index.html loads it with <script src="quiz-core.js">
+ * and uses window.QuizCore. Run the tests in a terminal with `node --test test/quiz-core.test.js`.
  *
  * Rules: ES2017 only, no dependencies, no build step. Everything with side effects (fetch, timers,
  * storage, clock, randomness) is injected so the tests run without a network or a browser.
@@ -63,6 +62,7 @@
     saving: '응모권을 발급하고 있어요',
     savingSlow: '사람이 많아 조금 걸리고 있어요. 이 화면을 닫지 말고 기다려 주세요.',
     submitExhausted: "연결이 잠시 불안정해요. 아래 '다시 시도'를 누르거나 부스 스태프에게 이 화면을 보여주세요.",
+    length: '입력한 내용이 너무 길어요. 줄여서 다시 입력해 주세요.',
     existingPhone: '이 번호로 이미 발급된 응모권을 불러왔어요.',
     statusChecking: '확인 중',
     statusUnknown: '확인 불가',
@@ -144,21 +144,13 @@
   }
 
   // ---------------------------------------------------------------- phone and info validation
-  // Accepts Korean mobile numbers only; returns digits (01012345678) or "" when invalid.
+  // Port of the server normalizePhone_ (Code.gs): NFKC, trim, a "+82" prefix becomes 0, strip non-digits, then
+  // the same final pattern. Returns digits (01012345678) or "" when invalid. Keep it identical to the server.
   function normalizePhone(value) {
-    if (value === null || value === undefined) { return ''; }
-    var s = String(value).normalize('NFKC').trim();
-    if (!/^\+?[0-9 \-]+$/.test(s)) { return ''; }
-    var digits;
-    if (s.charAt(0) === '+') {
-      var d = s.slice(1).replace(/[ \-]/g, '');
-      if (d.slice(0, 2) !== '82') { return ''; }
-      d = d.slice(2);
-      digits = d.charAt(0) === '0' ? d : '0' + d;
-    } else {
-      digits = s.replace(/[ \-]/g, '');
-    }
-    return (/^010[0-9]{8}$/.test(digits) || /^01[16789][0-9]{7,8}$/.test(digits)) ? digits : '';
+    var cell = String(value === null || value === undefined ? '' : value);
+    var digits = cell.normalize('NFKC').trim().replace(/^'/, '').trim()
+      .replace(/^\+82[\s-]*0?/, '0').replace(/\D/g, '');
+    return /^(?:010\d{8}|01[16789]\d{7,8})$/.test(digits) ? digits : '';
   }
 
   var EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -173,11 +165,13 @@
     var phoneText = str(i.phone);
     var email = str(i.email);
     if (infoPathReady !== true) { return { ok: false, code: 'CONSENT_TEXT_MISSING', field: 'consent' }; }
-    if (name === '' || name.length > 40) { return { ok: false, code: 'REQUIRED_FIELDS', field: 'name' }; }
+    if (name === '') { return { ok: false, code: 'REQUIRED_FIELDS', field: 'name' }; }
     if (phoneText === '') { return { ok: false, code: 'REQUIRED_FIELDS', field: 'phone' }; }
-    if (str(i.organization).length > 80) { return { ok: false, code: 'REQUIRED_FIELDS', field: 'organization' }; }
+    // Too long is a client-only code (copy in COPY.length), not part of the K1 table.
+    if (name.length > 40) { return { ok: false, code: 'LENGTH', field: 'name' }; }
+    if (str(i.organization).length > 80) { return { ok: false, code: 'LENGTH', field: 'organization' }; }
     if (normalizePhone(phoneText) === '') { return { ok: false, code: 'INVALID_PHONE', field: 'phone' }; }
-    if (email !== '' && !EMAIL_PATTERN.test(email)) { return { ok: false, code: 'INVALID_EMAIL', field: 'email' }; }
+    if (email !== '' && (email.length > 254 || !EMAIL_PATTERN.test(email))) { return { ok: false, code: 'INVALID_EMAIL', field: 'email' }; }
     if (!isObject(consent) || consent.required !== true) { return { ok: false, code: 'CONSENT_REQUIRED', field: 'consent' }; }
     return { ok: true, code: '', field: '' };
   }
@@ -204,9 +198,10 @@
     };
   }
 
-  // K3 normalization: NFKC, lowercase, then drop whitespace and . , ! ? middle-dot ' " -
+  // K3 normalization: NFKC, lowercase, then drop whitespace and . , ! ? middle-dot ' " - plus the typographic
+  // quotes U+2018/2019/201C/201D (iPhone smart punctuation), identical to the server normalizeAnswerText_.
   function normalizeAnswerText(v) {
-    return String(v === null || v === undefined ? '' : v).normalize('NFKC').toLowerCase().replace(/[\s.,!?·'"-]+/g, '');
+    return String(v === null || v === undefined ? '' : v).normalize('NFKC').toLowerCase().replace(/[\s.,!?·'"‘’“”-]+/g, '');
   }
   // true / false, or "" when the question has no right answer.
   function gradeForDisplay(question, value) {
@@ -229,9 +224,12 @@
 
   // ---------------------------------------------------------------- request body
   // The body is built once and stored as `pending`, so every attempt sends exactly the same bytes.
+  // Throws Error('INVALID_ENTRY_TYPE') unless state.entryType is exactly 'card' or 'info' (a missing type must
+  // never silently become a card ticket).
   function buildSubmitBody(state, content, deviceId, requestId, build) {
     var st = state || {};
-    var entryType = st.entryType === 'info' ? 'info' : 'card';
+    var entryType = st.entryType;
+    if (entryType !== 'card' && entryType !== 'info') { throw new Error('INVALID_ENTRY_TYPE'); }
     var body = {
       action: 'submit',
       apiVersion: API_VERSION,
@@ -250,7 +248,8 @@
       body.consent = {
         required: !!(st.consent && st.consent.required === true),
         marketing: !!(st.consent && st.consent.marketing === true),
-        version: content.consent ? content.consent.version : ''
+        // The version of the text the person actually saw (stored with the state), else the current content's.
+        version: (st.consent && st.consent.version) || (content.consent ? content.consent.version : '')
       };
     }
     var answers = st.answers || {};
@@ -374,7 +373,7 @@
     function run(action, request) {
       var key = request.method + ' ' + request.url + ' ' + (request.body || '');
       var cur = ops[action];
-      if (cur) { return cur.key === key ? cur.promise : Promise.resolve(failure('IN_FLIGHT', { message: '' })); }
+      if (cur) { return cur.key === key ? cur.promise : Promise.resolve(failure('IN_FLIGHT', { message: '', action: 'none' })); }
       return startRun(action, request, key);
     }
 
@@ -398,8 +397,10 @@
       }
       var prev = last[action];
       if (prev) { return startRun(action, prev.request, prev.key); }
-      return Promise.resolve(failure('NOTHING_TO_RETRY', { message: '' }));
+      return Promise.resolve(failure('NOTHING_TO_RETRY', { message: '', action: 'none' }));
     };
+    // True while a request for this action is in flight or waiting for its next attempt.
+    api.busy = function (action) { return !!ops[action]; };
     return api;
   }
 
@@ -463,27 +464,45 @@
         } else if (!rec.requests[b.requestId]) { status = 'ALREADY_REDEEMED'; }
         return ok({ status: status, ticket: view(rec), timing: { lockWaitMs: 0, lockHoldMs: 0 } });
       },
-      retryNow: function () { return bad('NOTHING_TO_RETRY'); }
+      busy: function () { return false; },
+      retryNow: function () { return Promise.resolve(failure('NOTHING_TO_RETRY', { message: '', action: 'none' })); }
     };
     return api;
   }
 
   // ---------------------------------------------------------------- device storage
+  var DRAFT_V1_KEY = 'valen-quiz-v1'; // draft v1 stored personal fields on devices that tried it; removed on load
+  var TICKET_FIELDS = ['ticketId', 'ticketToken', 'ticketNo', 'ticketLabel', 'eventId', 'entryType', 'issuedAt', 'issuedLabel',
+    'redeemed', 'redeemedAt', 'redeemedLabel', 'demo'];
+
   function sGet(storage, key) { try { return storage ? storage.getItem(key) : null; } catch (e) { return null; } }
   function sSet(storage, key, value) { try { if (!storage) { return false; } storage.setItem(key, value); return true; } catch (e) { return false; } }
   function sRemove(storage, key) { try { if (storage) { storage.removeItem(key); } } catch (e) { /* ignore */ } }
 
+  // Storage keys. opts.prefix (for example "demo:") keeps ?demo=1 state out of the real keys.
+  function storageKeys(opts) {
+    var p = opts && typeof opts.prefix === 'string' ? opts.prefix : '';
+    return { device: p + STORAGE_KEYS.device, state: p + STORAGE_KEYS.state, prefixed: p !== '' };
+  }
+
   // Persistent device id. If storage is blocked the new id still works for this tab (caller keeps it in memory).
-  function getDeviceId(storage, env) {
-    var stored = sGet(storage, STORAGE_KEYS.device);
+  function getDeviceId(storage, env, opts) {
+    var key = storageKeys(opts).device;
+    var stored = sGet(storage, key);
     if (typeof stored === 'string' && ID_PATTERN.test(stored)) { return stored; }
     var id = newId(env);
-    sSet(storage, STORAGE_KEYS.device, id);
+    sSet(storage, key, id);
     return id;
   }
 
   function freshState(eventId) {
     return { v: 3, eventId: eventId || '', stage: 'landing', entryType: '', answers: {}, qIndex: 0 };
+  }
+
+  function sanitizeTicket(ticket) {
+    var out = {};
+    TICKET_FIELDS.forEach(function (k) { if (ticket[k] !== undefined) { out[k] = ticket[k]; } });
+    return out;
   }
 
   // Only whitelisted keys reach storage, so a PIN (or any stray field) can never be persisted.
@@ -498,7 +517,7 @@
       out.consent = { required: s.consent.required === true, marketing: s.consent.marketing === true, version: s.consent.version || '' };
     }
     if (isObject(s.ticket)) {
-      out.ticket = s.ticket;
+      out.ticket = sanitizeTicket(s.ticket);
     } else {
       if (isObject(s.info)) { out.info = { name: str(s.info.name), organization: str(s.info.organization), phone: str(s.info.phone), email: str(s.info.email) }; }
       if (isObject(s.pending)) { out.pending = { requestId: s.pending.requestId, body: s.pending.body }; }
@@ -506,18 +525,21 @@
     return out;
   }
 
-  function saveState(storage, state, now) {
-    try { return sSet(storage, STORAGE_KEYS.state, JSON.stringify(sanitizeForStorage(state, toMs(now)))); } catch (e) { return false; }
+  function saveState(storage, state, now, opts) {
+    try { return sSet(storage, storageKeys(opts).state, JSON.stringify(sanitizeForStorage(state, toMs(now)))); } catch (e) { return false; }
   }
 
   // Returns the stored state, or null when missing, corrupt, wrong version or older than 36 h.
-  function loadState(storage, now) {
-    var raw = sGet(storage, STORAGE_KEYS.state);
+  // Without a prefix it also deletes the draft v1 key.
+  function loadState(storage, now, opts) {
+    var keys = storageKeys(opts);
+    if (!keys.prefixed) { sRemove(storage, DRAFT_V1_KEY); }
+    var raw = sGet(storage, keys.state);
     if (!raw) { return null; }
     var s;
     try { s = JSON.parse(raw); } catch (e) { s = null; }
     if (!isObject(s) || s.v !== 3 || typeof s.savedAt !== 'number' || toMs(now) - s.savedAt > TTL_MS) {
-      sRemove(storage, STORAGE_KEYS.state);
+      sRemove(storage, keys.state);
       return null;
     }
     if (!isObject(s.answers)) { s.answers = {}; }
@@ -525,22 +547,22 @@
     return s;
   }
 
-  // When config.eventId differs from the stored event (or the stored ticket's event), progress and ticket are
-  // cleared. The device id key is never touched. Returns {state, reset}.
-  function resetForEvent(storage, state, configEventId) {
+  // When config.eventId differs from the stored event, progress and ticket are cleared; the device id key is
+  // never touched. A stored ticket decides by its own eventId (state.eventId may come from the embedded content
+  // and be older than the ticket); without a ticket state.eventId decides. Returns {state, reset}.
+  function resetForEvent(storage, state, configEventId, opts) {
     if (!state || !configEventId) { return { state: state || null, reset: false }; }
-    var mismatch = (!!state.eventId && state.eventId !== configEventId) ||
-      (isObject(state.ticket) && !!state.ticket.eventId && state.ticket.eventId !== configEventId);
-    if (!mismatch) {
+    var stored = isObject(state.ticket) && state.ticket.eventId ? state.ticket.eventId : state.eventId;
+    if (!stored || stored === configEventId) {
       if (!state.eventId) { state.eventId = configEventId; }
       return { state: state, reset: false };
     }
-    sRemove(storage, STORAGE_KEYS.state);
+    sRemove(storage, storageKeys(opts).state);
     return { state: freshState(configEventId), reset: true };
   }
 
   function applyTicket(state, ticket) {
-    var next = Object.assign({}, state, { ticket: ticket, stage: 'ticket' });
+    var next = Object.assign({}, state, { ticket: ticket, stage: 'ticket', eventId: ticket.eventId || state.eventId });
     delete next.info;
     delete next.pending;
     return next;
@@ -548,13 +570,17 @@
 
   // Writes `pending` (requestId + exact body) to storage BEFORE the first send, then submits.
   // Resolves {response, state}. On success the ticket is stored and info/pending are dropped.
-  function submitWithPending(api, storage, state, body, now) {
+  // If a submit is already active (api.busy), nothing is written: the stored pending of the active request stays.
+  function submitWithPending(api, storage, state, body, now, opts) {
+    if (typeof api.busy === 'function' && api.busy('submit')) {
+      return Promise.resolve({ response: failure('IN_FLIGHT', { message: '', action: 'none' }), state: state });
+    }
     var pending = Object.assign({}, state, { stage: 'saving', pending: { requestId: body.requestId, body: body } });
-    saveState(storage, pending, now);
+    saveState(storage, pending, now, opts);
     return api.submit(body).then(function (res) {
       var next = pending;
-      if (!res.ok && res.code === 'IN_FLIGHT') {
-        return { response: res, state: pending }; // another request is active: change nothing
+      if (!res.ok && res.action === 'none') {
+        return { response: res, state: state }; // api without busy(): do not touch storage again
       }
       if (res.ok && isObject(res.data.ticket)) {
         next = applyTicket(pending, res.data.ticket);
@@ -565,25 +591,28 @@
         next = Object.assign({}, pending, { stage: res.action === 'back-to-info' ? 'info' : 'quiz' });
         delete next.pending;
       }
-      saveState(storage, next, now);
+      saveState(storage, next, now, opts);
       return { response: res, state: next };
     });
   }
 
   // ---------------------------------------------------------------- reload routing and ticket view
-  // content (optional) lets the quiz resume at the first unanswered question.
+  // content (optional) lets the quiz resume at the first unanswered question, or at the last question when all
+  // are answered but nothing was sent (the page shows the locked answer and the "get ticket" button).
+  // The page must set state.stage when it moves between steps: stage "info" always routes to the info step.
   function routeOnLoad(state, content) {
     if (!state) { return { route: 'landing' }; }
     if (isObject(state.ticket)) { return { route: 'ticket' }; }
     if (isObject(state.pending) && state.pending.requestId && isObject(state.pending.body)) { return { route: 'saving', resend: true }; }
-    if (state.entryType !== 'card' && state.entryType !== 'info') { return { route: state.stage === 'info' ? 'info' : 'landing' }; }
+    if (state.stage === 'info') { return { route: 'info' }; }
+    if (state.entryType !== 'card' && state.entryType !== 'info') { return { route: 'landing' }; }
     if (state.entryType === 'info' && !isObject(state.info)) { return { route: 'info' }; }
     var answers = state.answers || {};
     if (content && Array.isArray(content.questions) && content.questions.length > 0) {
       for (var i = 0; i < content.questions.length; i++) {
         if (isBlank(answers[content.questions[i].id])) { return { route: 'quiz', qIndex: i }; }
       }
-      return { route: 'saving', resend: false }; // everything answered but never sent: build a new request
+      return { route: 'quiz', qIndex: content.questions.length - 1 };
     }
     return { route: 'quiz', qIndex: state.qIndex | 0 };
   }
@@ -609,7 +638,7 @@
       label: label,
       issuedLabel: issuedLabel,
       issuedText: issuedLabel ? '발급 ' + issuedLabel : '',
-      redeemed: status === 'used',
+      redeemed: t.redeemed === true, // the stored flag is kept while the status is being checked
       redeemedLabel: redeemedLabel,
       status: status,
       statusText: statusText,
@@ -628,7 +657,7 @@
     createApi: createApi, createDemoApi: createDemoApi, newId: newId, normalizePhone: normalizePhone,
     validateInfo: validateInfo, buildSubmitBody: buildSubmitBody, effectiveContent: effectiveContent,
     normalizeAnswerText: normalizeAnswerText, gradeForDisplay: gradeForDisplay,
-    getDeviceId: getDeviceId, freshState: freshState, loadState: loadState, saveState: saveState,
+    getDeviceId: getDeviceId, storageKeys: storageKeys, freshState: freshState, loadState: loadState, saveState: saveState,
     resetForEvent: resetForEvent, applyTicket: applyTicket, submitWithPending: submitWithPending,
     routeOnLoad: routeOnLoad, ticketViewModel: ticketViewModel, errorCopy: errorCopy, errorInfo: errorInfo,
     savingText: savingText

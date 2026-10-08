@@ -343,7 +343,7 @@ test('F1 info: card skips everything; info needs name, valid phone, required con
   assert.strictEqual(QC.validateInfo('info', Object.assign({}, good, { email: 'test@example.com' }), yes, true).ok, true);
   assert.deepStrictEqual(QC.validateInfo('info', good, { required: false, marketing: true }, true), { ok: false, code: 'CONSENT_REQUIRED', field: 'consent' });
   assert.deepStrictEqual(QC.validateInfo('info', good, null, true), { ok: false, code: 'CONSENT_REQUIRED', field: 'consent' });
-  assert.strictEqual(QC.validateInfo('info', Object.assign({}, good, { name: 'x'.repeat(41) }), yes, true).code, 'REQUIRED_FIELDS');
+  assert.strictEqual(QC.validateInfo('info', Object.assign({}, good, { name: 'x'.repeat(41) }), yes, true).code, 'LENGTH');
   assert.strictEqual(QC.validateInfo('bogus', good, yes, true).code, 'INVALID_REQUEST');
 });
 
@@ -588,7 +588,7 @@ test('F1 route: reload routes to ticket, saving (resend pending), quiz, info or 
   assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', stage: 'quiz', answers: { q1: 'a' }, qIndex: 0 }, content), { route: 'quiz', qIndex: 1 });
   assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', stage: 'quiz', answers: {}, qIndex: 3 }), { route: 'quiz', qIndex: 3 });
   assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', info: { name: 'n' }, answers: { q1: 'a' } }, content), { route: 'quiz', qIndex: 1 });
-  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', answers: { q1: 'a', q2: 'b' } }, content), { route: 'saving', resend: false });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', answers: { q1: 'a', q2: 'b' } }, content), { route: 'quiz', qIndex: 1 });
   assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', answers: { q1: 'a' }, pending: { requestId: body.requestId, body } }, content), { route: 'saving', resend: true });
   assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', answers: {}, ticket: TICKET, pending: { requestId: body.requestId, body } }), { route: 'ticket' });
   assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', answers: {}, pending: { requestId: '', body: null } }, content), { route: 'quiz', qIndex: 0 });
@@ -669,6 +669,249 @@ test('F1 demo: demo api issues a demo-flagged ticket and never calls fetch', asy
   } finally {
     global.fetch = realFetch;
   }
+});
+
+// ==== Round 2 review fixes (tag F1r; the spec-named F1 tests above stay at exactly 14) ====================
+test('F1r submit: a second submit with another requestId while one is active writes nothing (stored pending stays A)', async () => {
+  const clock = makeClock();
+  const f = makeFetch([{ hang: true }]);
+  const api = makeApi(f, clock);
+  const s = memStorage();
+  const T = 1712345678901;
+  const content = QC.effectiveContent(null, DEFAULTS.embedded);
+  const state = { eventId: 'a-day-2026', stage: 'quiz', entryType: 'card', answers: { q1: 'a' }, qIndex: 0 };
+  const bodyA = QC.buildSubmitBody(state, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b');
+  const bodyB = QC.buildSubmitBody(state, content, 'dev-aaaaaaaaaaaaaaaa', 'req-bbbbbbbbbbbbbbbb', 'b');
+
+  assert.strictEqual(api.busy('submit'), false);
+  const first = QC.submitWithPending(api, s, state, bodyA, T);
+  assert.strictEqual(api.busy('submit'), true);
+  const second = await QC.submitWithPending(api, s, state, bodyB, T);
+  assert.strictEqual(second.response.code, 'IN_FLIGHT');
+  assert.strictEqual(second.response.action, 'none');
+  assert.strictEqual(second.state, state, 'the caller state is returned untouched');
+  assert.strictEqual(JSON.parse(s.getItem(QC.STORAGE_KEYS.state)).pending.requestId, 'req-aaaaaaaaaaaaaaaa');
+  assert.strictEqual(f.calls.length, 1);
+  assert.ok(first instanceof Promise);
+
+  // an api without busy() (the demo api) still works
+  const demo = QC.createDemoApi({ now: () => T });
+  assert.strictEqual(demo.busy('submit'), false);
+  const out = await QC.submitWithPending(demo, memStorage(), state, bodyA, T, { prefix: 'demo:' });
+  assert.strictEqual(out.response.ok, true);
+  const noBusy = { submit: () => Promise.resolve({ ok: true, data: { ticket: TICKET } }) };
+  assert.strictEqual((await QC.submitWithPending(noBusy, memStorage(), state, bodyA, T)).response.ok, true);
+});
+
+test('F1r reset: a stored ticket decides by its own event; applyTicket records the ticket event', () => {
+  const s = memStorage();
+  const T = 1712345678901;
+  // state.eventId came from the embedded content, the server issued the ticket under the phonetest event
+  const stateEmbedded = { eventId: 'a-day-2026', stage: 'ticket', entryType: 'card', answers: {}, qIndex: 0, ticket: Object.assign({}, TICKET, { eventId: 'phonetest-1012' }) };
+  QC.saveState(s, stateEmbedded, T);
+  const keep = QC.resetForEvent(s, QC.loadState(s, T), 'phonetest-1012');
+  assert.strictEqual(keep.reset, false, 'a fresh ticket is not wiped');
+  assert.ok(keep.state.ticket);
+  assert.notStrictEqual(s.getItem(QC.STORAGE_KEYS.state), null);
+  assert.strictEqual(QC.resetForEvent(s, QC.loadState(s, T), 'a-day-2026').reset, true);
+
+  const applied = QC.applyTicket({ eventId: 'a-day-2026', answers: {}, info: { name: 'x' }, pending: { requestId: 'r' } }, Object.assign({}, TICKET, { eventId: 'phonetest-1012' }));
+  assert.strictEqual(applied.eventId, 'phonetest-1012');
+  assert.strictEqual(applied.info, undefined);
+  assert.strictEqual(applied.pending, undefined);
+  assert.strictEqual(QC.applyTicket({ eventId: 'e1' }, { ticketId: 'x' }).eventId, 'e1');
+});
+
+test('F1r api: without AbortController a late success after the timeout is ignored; exactly one retry and one resolution', async () => {
+  const clock = makeClock();
+  const late = {};
+  const calls = [];
+  const okText = JSON.stringify(okEnv({ eventId: 'a-day-2026' }));
+  const fetchFn = (url, init) => {
+    calls.push({ url, init });
+    const res = { ok: true, status: 200, text: () => Promise.resolve(okText) };
+    if (calls.length === 1) { return new Promise((resolve) => { late.resolve = () => resolve(res); }); }
+    return Promise.resolve(res);
+  };
+  const states = [];
+  const api = QC.createApi({
+    url: API, build: 'b', fetch: fetchFn, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout, random: () => 0.5,
+    now: clock.now, AbortController: null, onState: (s) => states.push(s.state + ':' + s.code)
+  });
+  let resolutions = 0;
+  const p = api.config().then((r) => { resolutions += 1; return r; });
+  await clock.advance(10000);
+  assert.strictEqual(calls[0].init.signal, undefined, 'no signal without AbortController');
+  assert.deepStrictEqual(states, ['sending:', 'waiting:TIMEOUT']);
+  late.resolve(); // the first request finally succeeds, after its attempt already timed out
+  await flush();
+  assert.strictEqual(calls.length, 1, 'no extra request');
+  await clock.advance(1500);
+  assert.strictEqual(calls.length, 2, 'exactly one retry');
+  const r = await p;
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.attempts, 2);
+  await clock.advance(60000);
+  assert.strictEqual(resolutions, 1);
+  assert.strictEqual(calls.length, 2);
+  assert.strictEqual(clock.count(), 0, 'no pending timers');
+});
+
+test('F1r api: a success with another apiVersion is BAD_RESPONSE; unknown server codes use the server retryable flag and message', async () => {
+  const clock = makeClock();
+  const f = makeFetch([{ json: { ok: true, apiVersion: 2, serverMs: 1, data: {} } }, { json: okEnv({ ticket: TICKET }) }]);
+  const api = makeApi(f, clock);
+  const p = api.ticket('aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb');
+  await clock.advance(0);
+  assert.strictEqual(f.calls.length, 1);
+  await clock.advance(2000);
+  assert.strictEqual(f.calls.length, 2, 'BAD_RESPONSE is retried');
+  assert.strictEqual((await p).ok, true);
+  const noData = makeFetch([{ json: { ok: true, apiVersion: 3, serverMs: 1 } }]);
+  const clockN = makeClock();
+  const pn = makeApi(noData, clockN).ticket('aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb');
+  await clockN.advance(2000);
+  assert.strictEqual((await pn).code, 'BAD_RESPONSE');
+
+  // unknown code, not retryable: server message, one request
+  const clock2 = makeClock();
+  const f2 = makeFetch([{ json: { ok: false, apiVersion: 3, code: 'NEW_CODE', message: '서버 메시지', retryable: false } }]);
+  const p2 = makeApi(f2, clock2).submit(SUBMIT_BODY);
+  await clock2.advance(60000);
+  const r2 = await p2;
+  assert.deepStrictEqual([r2.code, r2.message, r2.retryable, f2.calls.length], ['NEW_CODE', '서버 메시지', false, 1]);
+  // unknown code, retryable: retried
+  const clock3 = makeClock();
+  const f3 = makeFetch([{ json: { ok: false, apiVersion: 3, code: 'NEW_CODE', message: 'x', retryable: true } }, { json: okEnv({ ticket: TICKET }) }]);
+  const p3 = makeApi(f3, clock3).submit(SUBMIT_BODY);
+  await clock3.advance(1500);
+  assert.strictEqual(f3.calls.length, 2);
+  assert.strictEqual((await p3).ok, true);
+  // client-only codes never ask the page to do anything
+  const hung = makeApi(makeFetch([{ hang: true }]), makeClock());
+  hung.submit(SUBMIT_BODY);
+  assert.strictEqual((await hung.submit(Object.assign({}, SUBMIT_BODY, { requestId: 'req-bbbbbbbbbbbbbbbb' }))).action, 'none');
+  assert.strictEqual((await makeApi(makeFetch([{ hang: true }]), makeClock()).retryNow('submit')).action, 'none');
+  assert.strictEqual(QC.createDemoApi().retryNow('submit') instanceof Promise, true);
+  assert.strictEqual((await QC.createDemoApi().retryNow('submit')).action, 'none');
+});
+
+test('F1r phone: normalization is the server normalizePhone_ (divergence vectors)', () => {
+  assert.strictEqual(QC.normalizePhone('010.1234.5678'), '01012345678');
+  assert.strictEqual(QC.normalizePhone('(010) 1234-5678'), '01012345678');
+  assert.strictEqual(QC.normalizePhone("'01012345678"), '01012345678');
+  assert.strictEqual(QC.normalizePhone('+82-10-1234-5678'), '01012345678');
+  assert.strictEqual(QC.normalizePhone('+8201012345678'), '01012345678');
+  assert.strictEqual(QC.normalizePhone('+ 82 10 1234 5678'), '', 'a space after the plus is not the +82 prefix: the server rejects it too');
+  assert.strictEqual(QC.normalizePhone('82 10 1234 5678'), '');
+  assert.strictEqual(QC.normalizePhone('010-1234-567a'), '');
+  assert.strictEqual(QC.normalizePhone('010 1234 56789'), '');
+  assert.strictEqual(QC.normalizePhone(1012345678), '');
+});
+
+test('F1r info: too-long fields use the client-only LENGTH code; email is capped at 254', () => {
+  const good = { name: '테스트참가자', organization: '', phone: '010-0000-0001', email: '' };
+  const yes = { required: true, marketing: false };
+  assert.deepStrictEqual(QC.validateInfo('info', Object.assign({}, good, { name: 'x'.repeat(41) }), yes, true), { ok: false, code: 'LENGTH', field: 'name' });
+  assert.strictEqual(QC.validateInfo('info', Object.assign({}, good, { name: 'x'.repeat(40) }), yes, true).ok, true);
+  assert.deepStrictEqual(QC.validateInfo('info', Object.assign({}, good, { organization: 'x'.repeat(81) }), yes, true), { ok: false, code: 'LENGTH', field: 'organization' });
+  assert.strictEqual(QC.validateInfo('info', Object.assign({}, good, { organization: 'x'.repeat(80) }), yes, true).ok, true);
+  const longEmail = 'a'.repeat(250) + '@b.co'; // 255 characters
+  assert.strictEqual(longEmail.length, 255);
+  assert.deepStrictEqual(QC.validateInfo('info', Object.assign({}, good, { email: longEmail }), yes, true), { ok: false, code: 'INVALID_EMAIL', field: 'email' });
+  assert.strictEqual(QC.validateInfo('info', Object.assign({}, good, { email: longEmail.slice(1) }), yes, true).ok, true);
+  assert.strictEqual(QC.COPY.length, '입력한 내용이 너무 길어요. 줄여서 다시 입력해 주세요.');
+  assert.strictEqual(QC.errorInfo('LENGTH'), null, 'LENGTH is not in the K1 table');
+  assert.strictEqual(QC.validateInfo('info', Object.assign({}, good, { name: '' }), yes, true).code, 'REQUIRED_FIELDS');
+});
+
+test('F1r route: stage info wins, and an all-answered quiz lands on the last question', () => {
+  const content = { questions: [{ id: 'q1' }, { id: 'q2' }] };
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'info', info: { name: 'n' }, answers: { q1: 'a', q2: 'b' } }, content), { route: 'info' });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', stage: 'info', answers: { q1: 'a' } }, content), { route: 'info' });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', stage: 'quiz', answers: { q1: 'a', q2: 'b' } }, content), { route: 'quiz', qIndex: 1 });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', stage: 'quiz', answers: { q1: 'a' } }, { questions: [{ id: 'q1' }] }), { route: 'quiz', qIndex: 0 });
+  assert.notStrictEqual(QC.routeOnLoad({ entryType: 'card', answers: { q1: 'a', q2: 'b' } }, content).route, 'saving');
+  // a pending request still wins over stage info
+  const body = { requestId: 'req-aaaaaaaaaaaaaaaa' };
+  assert.deepStrictEqual(QC.routeOnLoad({ stage: 'info', entryType: 'card', answers: {}, pending: { requestId: body.requestId, body } }), { route: 'saving', resend: true });
+});
+
+test('F1r ticket: the stored redeemed flag survives the checking state', () => {
+  const now = new Date(2026, 9, 14, 15, 3, 7);
+  const usedTicket = Object.assign({}, TICKET, { redeemed: true, redeemedLabel: '15:10' });
+  const vm = QC.ticketViewModel(usedTicket, now, { check: 'checking' });
+  assert.strictEqual(vm.status, 'checking');
+  assert.strictEqual(vm.statusText, '확인 중');
+  assert.strictEqual(vm.redeemed, true);
+  assert.strictEqual(QC.ticketViewModel(TICKET, now, { check: 'checking' }).redeemed, false);
+});
+
+test('F1r payload: entry type must be card or info; the consent version is the one stored with the state', () => {
+  const content = QC.effectiveContent(null, DEFAULTS.embedded);
+  ['', undefined, null, 'Card', 'both'].forEach((entryType) => {
+    assert.throws(() => QC.buildSubmitBody({ entryType, answers: {} }, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b'), /INVALID_ENTRY_TYPE/, String(entryType));
+  });
+  assert.throws(() => QC.buildSubmitBody(null, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b'), /INVALID_ENTRY_TYPE/);
+  const seen = { entryType: 'info', info: { name: 'n', phone: '010-0000-0001' }, consent: { required: true, marketing: false, version: 'seen-v1' }, answers: {} };
+  assert.strictEqual(QC.buildSubmitBody(seen, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b').consent.version, 'seen-v1');
+  const noVersion = Object.assign({}, seen, { consent: { required: true, marketing: false } });
+  assert.strictEqual(QC.buildSubmitBody(noVersion, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b').consent.version, 'a-day-2026-v1');
+});
+
+test('F1r storage: ticket fields are whitelisted; the draft v1 key is removed; a prefix keeps demo state apart', () => {
+  const s = memStorage();
+  const T = 1712345678901;
+  const st = { eventId: 'a-day-2026', stage: 'ticket', entryType: 'card', answers: {}, ticket: Object.assign({}, TICKET, { demo: true, phone: '010-0000-0009', extra: 'x', pin: '1111' }) };
+  QC.saveState(s, st, T);
+  const t = JSON.parse(s.getItem(QC.STORAGE_KEYS.state)).ticket;
+  assert.deepStrictEqual(Object.keys(t).sort(), ['demo', 'entryType', 'eventId', 'issuedAt', 'issuedLabel', 'redeemed', 'redeemedAt', 'redeemedLabel', 'ticketId', 'ticketLabel', 'ticketNo', 'ticketToken']);
+
+  // draft v1 key is removed on load (also when there is no v3 state)
+  const s2 = memStorage();
+  s2.setItem('valen-quiz-v1', JSON.stringify({ entry: { name: '테스트참가자', phone: '010-0000-0001' } }));
+  assert.strictEqual(QC.loadState(s2, T), null);
+  assert.strictEqual(s2.getItem('valen-quiz-v1'), null);
+
+  // demo namespace: separate keys, real keys and the draft key untouched
+  const s3 = memStorage();
+  s3.setItem('valen-quiz-v1', 'draft');
+  const demo = { prefix: 'demo:' };
+  const deviceReal = QC.getDeviceId(s3);
+  QC.saveState(s3, { eventId: 'demo-preview', stage: 'quiz', entryType: 'card', answers: { q1: 'a' } }, T, demo);
+  assert.strictEqual(s3.getItem(QC.STORAGE_KEYS.state), null, 'real state key untouched');
+  const loaded = QC.loadState(s3, T, demo);
+  assert.strictEqual(loaded.eventId, 'demo-preview');
+  assert.strictEqual(s3.getItem('valen-quiz-v1'), 'draft', 'demo load never touches real keys');
+  assert.strictEqual(QC.loadState(s3, T), null);
+  assert.strictEqual(s3.getItem('valen-quiz-v1'), null, 'the real load removes the draft key');
+  const demoDevice = QC.getDeviceId(s3, undefined, demo);
+  assert.notStrictEqual(demoDevice, deviceReal);
+  assert.strictEqual(s3.getItem('demo:' + QC.STORAGE_KEYS.device), demoDevice);
+  assert.strictEqual(QC.resetForEvent(s3, loaded, 'a-day-2026', demo).reset, true);
+  assert.strictEqual(s3.getItem('demo:' + QC.STORAGE_KEYS.state), null);
+  assert.strictEqual(s3.getItem(QC.STORAGE_KEYS.device), deviceReal);
+});
+
+test('F1r grade: typographic quotes are removed like the server; punctuation-only answers never match', () => {
+  const q = { type: 'text', accepted: ["Don't", 'say "hi"'] };
+  assert.strictEqual(QC.gradeForDisplay(q, 'Don’t'), true);
+  assert.strictEqual(QC.gradeForDisplay(q, 'Don‘t'), true);
+  assert.strictEqual(QC.gradeForDisplay(q, '“say hi”'), true);
+  assert.strictEqual(QC.gradeForDisplay(q, 'dont'), true);
+  assert.strictEqual(QC.normalizeAnswerText('‘’“”'), '');
+  // the empty-after-normalization guard: an accepted answer made only of removable characters must not match
+  assert.strictEqual(QC.gradeForDisplay({ type: 'text', accepted: ['-', '.'] }, '?!'), false);
+  assert.strictEqual(QC.gradeForDisplay({ type: 'text', accepted: ['-'] }, ''), false);
+});
+
+test('F1r public: source comments are English only (no Hangul in comment lines)', () => {
+  ['quiz-core.js', 'defaults.js'].forEach((file) => {
+    const lines = fs.readFileSync(path.join(__dirname, '..', file), 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      if (/^\s*(\/\/|\/\*|\*)/.test(line)) { assert.ok(!/[\uAC00-\uD7A3]/.test(line), file + ':' + (i + 1) + ' has Korean in a comment'); }
+    });
+  });
 });
 
 // ---- public repo hygiene -------------------------------------------------------------------------------
