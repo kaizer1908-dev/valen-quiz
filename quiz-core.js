@@ -91,6 +91,7 @@
   }
   // Exact Korean copy for a code; unknown codes get the SERVER_ERROR copy.
   function errorCopy(code) {
+    if (code === 'LENGTH') return COPY.length; // client-only validation code, outside the K1 table
     var info = errorInfo(code);
     return info ? info.message : ERROR_TABLE.SERVER_ERROR.message;
   }
@@ -145,7 +146,7 @@
 
   // ---------------------------------------------------------------- phone and info validation
   // Port of the server normalizePhone_ (Code.gs): NFKC, trim, a "+82" prefix becomes 0, strip non-digits, then
-  // the same final pattern. Returns digits (01012345678) or "" when invalid. Keep it identical to the server.
+  // the same final pattern. Returns digits (01012345678) or "" when invalid. Keep it identical to the server (string inputs).
   function normalizePhone(value) {
     var cell = String(value === null || value === undefined ? '' : value);
     var digits = cell.normalize('NFKC').trim().replace(/^'/, '').trim()
