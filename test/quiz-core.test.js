@@ -75,7 +75,7 @@ const okEnv = (data) => ({ ok: true, apiVersion: 3, serverMs: 5, data });
 const errEnv = (code) => ({ ok: false, apiVersion: 3, serverMs: 5, code, message: 'server text', retryable: false });
 const CONFIG_DATA = { eventId: 'a-day-2026', registrationOpen: true, infoPathReady: true, contentReady: false, questions: null };
 const TICKET = {
-  ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'bbbbbbbbbbbbbbbb', ticketNo: 42, ticketLabel: 'No. 042', eventId: 'a-day-2026',
+  ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'b'.repeat(16), ticketNo: 42, ticketLabel: 'No. 042', eventId: 'a-day-2026',
   entryType: 'card', issuedAt: '2026-10-14T06:03:00.000Z', issuedLabel: '15:03', redeemed: false, redeemedAt: '', redeemedLabel: ''
 };
 
@@ -121,7 +121,7 @@ test('F1 api: GET config and POST text/plain with credentials omit, redirect fol
   assert.strictEqual(get.init.body, undefined);
   assert.deepStrictEqual(Object.keys(get.init).filter((k) => k !== 'signal').sort(), ['cache', 'credentials', 'method', 'redirect']);
 
-  const t = await api.ticket('aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb');
+  const t = await api.ticket('aaaaaaaaaaaaaaaa', 'b'.repeat(16));
   assert.strictEqual(t.ok, true);
   const post = f.calls[1];
   assert.strictEqual(post.url, API);
@@ -130,7 +130,7 @@ test('F1 api: GET config and POST text/plain with credentials omit, redirect fol
   assert.strictEqual(post.init.redirect, 'follow');
   assert.strictEqual(post.init.cache, 'no-store');
   assert.deepStrictEqual(post.init.headers, { 'Content-Type': 'text/plain;charset=utf-8' });
-  assert.strictEqual(post.init.body, JSON.stringify({ action: 'ticket', apiVersion: 3, ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'bbbbbbbbbbbbbbbb' }));
+  assert.strictEqual(post.init.body, JSON.stringify({ action: 'ticket', apiVersion: 3, ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'b'.repeat(16) }));
   assert.deepStrictEqual(Object.keys(post.init).filter((k) => k !== 'signal').sort(), ['body', 'cache', 'credentials', 'headers', 'method', 'redirect']);
 
   await api.submit(SUBMIT_BODY);
@@ -186,7 +186,7 @@ test('F1 api: network, timeout, non-JSON, BUSY and SERVER_ERROR retry with backo
   const clock3 = makeClock();
   const f3 = makeFetch([{ json: errEnv('SERVER_ERROR') }]);
   const api3 = makeApi(f3, clock3);
-  const p3 = api3.ticket('aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb');
+  const p3 = api3.ticket('aaaaaaaaaaaaaaaa', 'b'.repeat(16));
   await clock3.advance(1999); assert.strictEqual(f3.calls.length, 1);
   await clock3.advance(1); assert.strictEqual(f3.calls.length, 2);
   const r3 = await p3;
@@ -198,7 +198,7 @@ test('F1 api: network, timeout, non-JSON, BUSY and SERVER_ERROR retry with backo
   const clock4 = makeClock();
   const f4 = makeFetch([{ reject: true }, { reject: true }, { json: okEnv({ status: 'REDEEMED', ticket: TICKET }) }]);
   const api4 = makeApi(f4, clock4);
-  const p4 = api4.redeem({ ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'bbbbbbbbbbbbbbbb', pin: '0000', requestId: 'r-aaaaaaaaaaaaaaaa' });
+  const p4 = api4.redeem({ ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'b'.repeat(16), pin: '0000', requestId: 'r-aaaaaaaaaaaaaaaa' });
   await clock4.advance(999); assert.strictEqual(f4.calls.length, 1);
   await clock4.advance(1); assert.strictEqual(f4.calls.length, 2);
   await clock4.advance(2999); assert.strictEqual(f4.calls.length, 2);
@@ -770,7 +770,7 @@ test('F1r api: a success with another apiVersion is BAD_RESPONSE; unknown server
   const clock = makeClock();
   const f = makeFetch([{ json: { ok: true, apiVersion: 2, serverMs: 1, data: {} } }, { json: okEnv({ ticket: TICKET }) }]);
   const api = makeApi(f, clock);
-  const p = api.ticket('aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb');
+  const p = api.ticket('aaaaaaaaaaaaaaaa', 'b'.repeat(16));
   await clock.advance(0);
   assert.strictEqual(f.calls.length, 1);
   await clock.advance(2000);
@@ -778,7 +778,7 @@ test('F1r api: a success with another apiVersion is BAD_RESPONSE; unknown server
   assert.strictEqual((await p).ok, true);
   const noData = makeFetch([{ json: { ok: true, apiVersion: 3, serverMs: 1 } }]);
   const clockN = makeClock();
-  const pn = makeApi(noData, clockN).ticket('aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb');
+  const pn = makeApi(noData, clockN).ticket('aaaaaaaaaaaaaaaa', 'b'.repeat(16));
   await clockN.advance(2000);
   assert.strictEqual((await pn).code, 'BAD_RESPONSE');
 
@@ -951,11 +951,11 @@ test('F1r api: a malformed success payload is BAD_RESPONSE and is retried inside
   ];
   ticketVariants.forEach((bad) => {
     cases.push(['submit', bad, goodTicket, (api) => api.submit(SUBMIT_BODY)]);
-    cases.push(['ticket', bad, goodTicket, (api) => api.ticket('aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb')]);
+    cases.push(['ticket', bad, goodTicket, (api) => api.ticket('aaaaaaaaaaaaaaaa', 'b'.repeat(16))]);
   });
   const goodRedeem = { status: 'REDEEMED', ticket: TICKET };
   [{ status: 'DONE', ticket: TICKET }, { status: 'REDEEMED' }, { status: 'REDEEMED', ticket: {} }, { ticket: TICKET }].forEach((bad) => {
-    cases.push(['redeem', bad, goodRedeem, (api) => api.redeem({ ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'bbbbbbbbbbbbbbbb', pin: '7391', requestId: 'req-aaaaaaaaaaaaaaaa' })]);
+    cases.push(['redeem', bad, goodRedeem, (api) => api.redeem({ ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'b'.repeat(16), pin: '7391', requestId: 'req-aaaaaaaaaaaaaaaa' })]);
   });
   [{}, { eventId: 'a-day-2026' }, Object.assign({}, CONFIG_DATA, { registrationOpen: 'yes' }), Object.assign({}, CONFIG_DATA, { eventId: '' }),
     Object.assign({}, CONFIG_DATA, { infoPathReady: undefined }), Object.assign({}, CONFIG_DATA, { contentReady: 1 })].forEach((bad) => {
@@ -1007,7 +1007,7 @@ test('F1r storage: a malformed success is never stored as a ticket; the pending 
 });
 
 test('F1r storage: acceptTicket is read when the answer arrives; a refused ticket is never written and the pending request stays', async () => {
-  const TK = Object.assign({}, TICKET, { ticketId: 'zzzzzzzzzzzzzzzz', ticketToken: 'yyyyyyyyyyyyyyyy' }); // ids that appear nowhere else
+  const TK = Object.assign({}, TICKET, { ticketId: 'zzzzzzzzzzzzzzzz', ticketToken: 'y'.repeat(16) }); // ids that appear nowhere else
   const writes = [];
   const storage = {
     m: new Map(),
