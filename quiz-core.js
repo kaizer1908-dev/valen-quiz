@@ -29,6 +29,8 @@
     redeem: { timeout: 20000, attempts: 3, backoff: [1000, 3000] }
   };
   var JITTER = 0.3;
+  var MAX_QUESTIONS = 9;       // plus the page's concern answer = the server's 10 answers per submit
+  var RESERVED_ID = 'concern'; // the id of the concern answer; a Sheet question may not use it
 
   // K1 error table. Messages are exact. `action` is what the page does with the code.
   var NET_COPY = '연결이 잠시 불안정해요. 자동으로 다시 시도할게요.';
@@ -63,6 +65,8 @@
     savingSlow: '사람이 많아 조금 걸리고 있어요. 이 화면을 닫지 말고 기다려 주세요.',
     submitExhausted: "연결이 잠시 불안정해요. 아래 '다시 시도'를 누르거나 부스 스태프에게 이 화면을 보여주세요.",
     length: '입력한 내용이 너무 길어요. 줄여서 다시 입력해 주세요.',
+    emailRequired: '이메일을 입력해 주세요.',
+    orgRequired: '소속을 입력해 주세요.',
     existingPhone: '이 번호로 이미 발급된 응모권을 불러왔어요.',
     statusChecking: '확인 중',
     statusUnknown: '확인 불가',
@@ -91,7 +95,10 @@
   }
   // Exact Korean copy for a code; unknown codes get the SERVER_ERROR copy.
   function errorCopy(code) {
-    if (code === 'LENGTH') return COPY.length; // client-only validation code, outside the K1 table
+    // Client-only validation codes (outside the K1 table).
+    if (code === 'LENGTH') return COPY.length;
+    if (code === 'EMAIL_REQUIRED') return COPY.emailRequired;
+    if (code === 'ORG_REQUIRED') return COPY.orgRequired;
     var info = errorInfo(code);
     return info ? info.message : ERROR_TABLE.SERVER_ERROR.message;
   }
@@ -158,7 +165,8 @@
   function str(v) { return v === null || v === undefined ? '' : String(v).trim(); }
 
   // Mirrors the server order: gate, required fields, phone, email, consent. Card entries skip everything.
-  function validateInfo(entryType, info, consent, infoPathReady) {
+  // requireAll (the page sets it): email and organization are required too; the server needs only name and phone.
+  function validateInfo(entryType, info, consent, infoPathReady, requireAll) {
     if (entryType === 'card') { return { ok: true, code: '', field: '' }; }
     if (entryType !== 'info') { return { ok: false, code: 'INVALID_REQUEST', field: '' }; }
     var i = isObject(info) ? info : {};
@@ -168,6 +176,8 @@
     if (infoPathReady !== true) { return { ok: false, code: 'CONSENT_TEXT_MISSING', field: 'consent' }; }
     if (name === '') { return { ok: false, code: 'REQUIRED_FIELDS', field: 'name' }; }
     if (phoneText === '') { return { ok: false, code: 'REQUIRED_FIELDS', field: 'phone' }; }
+    if (requireAll === true && email === '') { return { ok: false, code: 'EMAIL_REQUIRED', field: 'email' }; }
+    if (requireAll === true && str(i.organization) === '') { return { ok: false, code: 'ORG_REQUIRED', field: 'organization' }; }
     // Too long is a client-only code (copy in COPY.length), not part of the K1 table.
     if (name.length > 40) { return { ok: false, code: 'LENGTH', field: 'name' }; }
     if (str(i.organization).length > 80) { return { ok: false, code: 'LENGTH', field: 'organization' }; }
@@ -186,7 +196,9 @@
   function effectiveContent(serverData, embedded) {
     var emb = embedded || {};
     var srv = isObject(serverData) ? serverData : null;
-    var useServerQuestions = !!(srv && srv.contentReady === true && Array.isArray(srv.questions) && srv.questions.length > 0);
+    // Server questions are used only with 1-9 questions (the concern step is the tenth answer) and without the reserved id.
+    var useServerQuestions = !!(srv && srv.contentReady === true && Array.isArray(srv.questions) && srv.questions.length > 0 &&
+      srv.questions.length <= MAX_QUESTIONS && !srv.questions.some(function (q) { return isObject(q) && q.id === RESERVED_ID; }));
     var srvConsent = srv && isObject(srv.consent) && !isBlank(srv.consent.requiredDetail) ? srv.consent : null;
     return {
       source: useServerQuestions ? 'server' : 'embedded',

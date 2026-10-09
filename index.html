@@ -362,6 +362,13 @@
     else if (r.route === 'info') { renderInfo(''); }
     else { showStart(); }
   }
+  // True when the stored info lacks one of the four fields or was consented to for another consent text version.
+  function infoOutdated() {
+    var i = state.info || {};
+    var c = state.consent || {};
+    var version = (effective().consent || {}).version || '';
+    return blank(i.name) || blank(i.email) || blank(i.phone) || blank(i.organization) || c.required !== true || c.version !== version;
+  }
   // The first screen is the info form; a fresh state is made when nothing usable is stored.
   function showStart() {
     if (!state) { state = Q.freshState(configEventId()); }
@@ -371,7 +378,13 @@
   function route() {
     var r = Q.routeOnLoad(state, null);
     // A stored pending request is replayed only after config is known (at most 5 s): it may belong to another event.
-    if (r.route === 'quiz' || r.route === 'saving') { whenContent(function () { enter(Q.routeOnLoad(state, content)); }); }
+    if (r.route === 'quiz' || r.route === 'saving') {
+      whenContent(function () {
+        // Stored progress that predates the current consent text or the four required fields goes back to the form.
+        if (r.route === 'quiz' && infoOutdated()) { renderInfo(''); return; }
+        enter(Q.routeOnLoad(state, content));
+      });
+    }
     else { enter(r); }
   }
 
@@ -422,11 +435,9 @@
     ev.preventDefault();
     var info = { name: $('field-name').value.trim(), organization: $('field-org').value.trim(), phone: $('field-phone').value.trim(), email: $('field-email').value.trim() };
     var consent = { required: $('consent-required').checked, marketing: false, version: shownConsentVersion };
-    var v = Q.validateInfo('info', info, consent, effective().infoPathReady);
+    // The team asks for all four fields (the server needs only name and phone), so the page requires them all.
+    var v = Q.validateInfo('info', info, consent, effective().infoPathReady, true);
     if (!v.ok) { showInfoError(v.code, v.field, false); return; }
-    // The team asks for all four fields (the server needs only name and phone): the browser names the empty one.
-    var empty = info.email === '' ? $('field-email') : (info.organization === '' ? $('field-org') : null);
-    if (empty) { if (typeof empty.reportValidity === 'function') { empty.reportValidity(); } empty.focus(); return; }
     state.entryType = 'info';
     state.info = info;
     state.consent = consent;

@@ -547,7 +547,7 @@ test('F1 config: server content only when contentReady with questions, else embe
   // defaults.js shape
   assert.strictEqual(emb.eventId, 'a-day-2026');
   assert.strictEqual(emb.contentVersion, 'embedded-2026-10-v1');
-  assert.strictEqual(emb.consent.version, 'a-day-2026-v1');
+  assert.strictEqual(emb.consent.version, 'a-day-2026-v2');
   assert.strictEqual(emb.consent.collectedItems, '수집 항목: 이름, 휴대폰 번호, 소속(입력한 경우), 이메일(입력한 경우), 퀴즈 응답, 기기 식별값(중복 참여 방지용)');
   // The team's consent text (C25), verbatim, four lines.
   assert.strictEqual(emb.consent.requiredDetail, [
@@ -556,7 +556,7 @@ test('F1 config: server content only when contentReady with questions, else embe
     '- 보유 기간 수집일로부터 1년 (목적 달성 시 지체 없이 파기)',
     '- 귀하는 개인정보 수집 및 이용에 대한 동의를 거부할 권리가 있습니다. 단, 필수 항목 동의 거부 시 이벤트 참여 및 경품 수령이 제한됩니다.'
   ].join(String.fromCharCode(10)));
-  assert.strictEqual(emb.consent.version, 'a-day-2026-v1', 'the consent version is unchanged');
+  assert.strictEqual(emb.consent.version, 'a-day-2026-v2', 'the consent version is v2 (C27)');
   assert.strictEqual(emb.questions[0].explanation, '80개 브랜드 데이터 기반으로 쌓은 Insight 와 Valen Agent 를 오후 5시에서 보실 수 있습니다.');
   assert.strictEqual(emb.questions.length, 1);
   assert.strictEqual(emb.questions[0].type, 'text');
@@ -865,7 +865,7 @@ test('F1r payload: entry type must be card or info; the consent version is the o
   const seen = { entryType: 'info', info: { name: 'n', phone: '010-0000-0001' }, consent: { required: true, marketing: false, version: 'seen-v1' }, answers: {} };
   assert.strictEqual(QC.buildSubmitBody(seen, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b').consent.version, 'seen-v1');
   const noVersion = Object.assign({}, seen, { consent: { required: true, marketing: false } });
-  assert.strictEqual(QC.buildSubmitBody(noVersion, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b').consent.version, 'a-day-2026-v1');
+  assert.strictEqual(QC.buildSubmitBody(noVersion, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b').consent.version, 'a-day-2026-v2');
 });
 
 test('F1r storage: ticket fields are whitelisted; the draft v1 key is removed; a prefix keeps demo state apart', () => {
@@ -1040,4 +1040,40 @@ test('F1r storage: acceptTicket is read when the answer arrives; a refused ticke
   assert.strictEqual(r2.response.ok, true);
   assert.strictEqual(writes.filter((w) => w.indexOf(TK.ticketId) !== -1).length, 1, 'stored once');
   assert.strictEqual(JSON.parse(storage.m.get(QC.STORAGE_KEYS.state)).pending, undefined);
+});
+
+// ---- review C27 -----------------------------------------------------------------------------------------
+test('F1r config: server questions need 1-9 questions and no reserved concern id, else the embedded fallback is used', () => {
+  const emb = DEFAULTS.embedded;
+  const mk = (n, id) => Array.from({ length: n }, (_, i) => ({ id: id && i === 0 ? id : 'q' + (i + 1), order: i + 1, type: 'text', title: 't' + i, hint: 'h', accepted: ['a'], explanation: '' }));
+  const base = Object.assign({}, CONFIG_DATA, { contentReady: true, contentVersion: 'srv-v1' });
+  const nine = QC.effectiveContent(Object.assign({}, base, { questions: mk(9) }), emb);
+  assert.strictEqual(nine.source, 'server');
+  assert.strictEqual(nine.questions.length, 9);
+  const ten = QC.effectiveContent(Object.assign({}, base, { questions: mk(10) }), emb);
+  assert.strictEqual(ten.source, 'embedded', 'ten server questions would make eleven answers');
+  assert.strictEqual(ten.contentVersion, emb.contentVersion);
+  const clash = QC.effectiveContent(Object.assign({}, base, { questions: mk(2, 'concern') }), emb);
+  assert.strictEqual(clash.source, 'embedded', 'a Sheet question named concern collides with the concern answer');
+  assert.deepStrictEqual(clash.questions.map((q) => q.id), ['q1'], 'the fallback has no duplicate ids');
+  assert.strictEqual(QC.effectiveContent(Object.assign({}, base, { questions: mk(1) }), emb).source, 'server');
+  // the gates still come from the server when the questions fall back
+  assert.strictEqual(QC.effectiveContent(Object.assign({}, base, { questions: mk(10), registrationOpen: false }), emb).registrationOpen, false);
+});
+
+test('F1r info: with requireAll an empty or whitespace-only email or organization has its own client-only message', () => {
+  const yes = { required: true, marketing: false, version: 'v' };
+  const full = { name: '테스트참가자', phone: '010-0000-0001', email: 'test@example.com', organization: '테스트회사' };
+  assert.deepStrictEqual(QC.validateInfo('info', full, yes, true, true), { ok: true, code: '', field: '' });
+  // without the flag the server rules hold: only name and phone are required
+  assert.strictEqual(QC.validateInfo('info', Object.assign({}, full, { email: '', organization: '' }), yes, true).ok, true);
+  ['', '   ', '\t'].forEach((blank) => {
+    assert.deepStrictEqual(QC.validateInfo('info', Object.assign({}, full, { email: blank }), yes, true, true), { ok: false, code: 'EMAIL_REQUIRED', field: 'email' });
+    assert.deepStrictEqual(QC.validateInfo('info', Object.assign({}, full, { organization: blank }), yes, true, true), { ok: false, code: 'ORG_REQUIRED', field: 'organization' });
+  });
+  assert.strictEqual(QC.errorCopy('EMAIL_REQUIRED'), '이메일을 입력해 주세요.');
+  assert.strictEqual(QC.errorCopy('ORG_REQUIRED'), '소속을 입력해 주세요.');
+  assert.strictEqual(QC.errorInfo('EMAIL_REQUIRED'), null, 'not part of the K1 table');
+  // the name and phone messages come first
+  assert.strictEqual(QC.validateInfo('info', Object.assign({}, full, { name: '', email: '' }), yes, true, true).code, 'REQUIRED_FIELDS');
 });

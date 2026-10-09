@@ -7,6 +7,13 @@ with a live clock and a staff panel (PIN, then mark the ticket used before the r
 stored ticket and checks its status once. It saves through a JSON API (Apps Script, fetch only). The theme is light; the final
 screen uses the team's blue gradient design with `assets/gift.webp` and `assets/valen-logo.webp`.
 
+## Quiz content rules (Sheet)
+
+- Use at most 9 quiz questions: the concern step is sent as the tenth answer (the server accepts 10 answers per submit).
+- Never name a Sheet question `concern`: that id is reserved for the concern step.
+- With more than 9 questions, or a question named `concern`, the page does not use the Sheet questions at all and falls back to the embedded question in `defaults.js` (the other Sheet gates still apply).
+- The consent text version is `a-day-2026-v2` (in `defaults.js` and in the Sheet `consent_version`). Stored progress for another version, or without all four required fields, goes back to the info form with the entered values kept.
+
 ## Permanence rule
 
 The QR is already printed and encodes https://kaizer1908-dev.github.io/valen-quiz/.

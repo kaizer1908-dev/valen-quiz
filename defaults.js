@@ -16,7 +16,7 @@
       eventId: 'a-day-2026',
       contentVersion: 'embedded-2026-10-v1',
       consent: {
-        version: 'a-day-2026-v1',
+        version: 'a-day-2026-v2',
         collectedItems: '수집 항목: 이름, 휴대폰 번호, 소속(입력한 경우), 이메일(입력한 경우), 퀴즈 응답, 기기 식별값(중복 참여 방지용)',
         // The team's text (it keeps its own separator dot); the collected-items line adds two items per spec C26.
         requiredDetail: '- 수집 항목 : 이름, 연락처, 이메일, 회사명·직책, 고민 유형·퀴즈 응답, 기기 식별값(중복 참여 방지용)\n- 이용 목적 이벤트 운영(참여 확인·경품 추첨)\n- 보유 기간 수집일로부터 1년 (목적 달성 시 지체 없이 파기)\n- 귀하는 개인정보 수집 및 이용에 대한 동의를 거부할 권리가 있습니다. 단, 필수 항목 동의 거부 시 이벤트 참여 및 경품 수령이 제한됩니다.',

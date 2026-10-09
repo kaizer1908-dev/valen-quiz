@@ -397,28 +397,36 @@ test('F2r run: the demo flow reaches the final screen with no network call and o
   assert.deepStrictEqual(Array.from(h.session.map.keys()).filter((k) => !k.startsWith('demo:')), []);
 });
 
-test('F2r run: the info form needs all four fields and consent; the K1 copy is exact; the team consent text and footnote show', async () => {
+test('F2r run: the info form needs all four fields and consent with exact messages; the team consent text shows', async () => {
   const h = boot({ search: '?demo=1' });
   await settle();
   assert.strictEqual(h.text('consent-detail'), TEAM_CONSENT.join(String.fromCharCode(10)), 'the demo shows the embedded team text (lines joined by the DOM)');
+  const msg = () => h.text('info-error');
   h.click(h.byId['info-next']); await settle();
-  assert.strictEqual(h.text('info-error'), '이름과 휴대폰 번호를 입력해 주세요.');
+  assert.strictEqual(msg(), '이름과 휴대폰 번호를 입력해 주세요.');
   h.type(h.byId['field-name'], '테스트참가자'); h.type(h.byId['field-phone'], '010-0000-0001');
   h.click(h.byId['info-next']); await settle();
-  assert.strictEqual(h.text('info-error'), '개인정보 수집·이용에 동의해야 참여할 수 있어요.');
+  assert.strictEqual(msg(), '이메일을 입력해 주세요.');
+  assert.strictEqual(h.byId['field-email'].focused, true);
+  h.type(h.byId['field-email'], '   '); // whitespace only
+  h.click(h.byId['info-next']); await settle();
+  assert.strictEqual(msg(), '이메일을 입력해 주세요.');
+  h.type(h.byId['field-email'], 'test@example.com');
+  h.click(h.byId['info-next']); await settle();
+  assert.strictEqual(msg(), '소속을 입력해 주세요.');
+  assert.strictEqual(h.byId['field-org'].focused, true);
+  h.type(h.byId['field-org'], '  \t '); // whitespace only
+  h.click(h.byId['info-next']); await settle();
+  assert.strictEqual(msg(), '소속을 입력해 주세요.');
+  assert.deepStrictEqual(h.page(), ['p-info']);
+  h.type(h.byId['field-org'], '테스트회사 대리');
+  h.click(h.byId['info-next']); await settle();
+  assert.strictEqual(msg(), '개인정보 수집·이용에 동의해야 참여할 수 있어요.');
   h.type(h.byId['field-name'], 'ㄱ'.repeat(41));
   h.check(h.byId['consent-required'], true);
   h.click(h.byId['info-next']); await settle();
-  assert.strictEqual(h.text('info-error'), '입력한 내용이 너무 길어요. 줄여서 다시 입력해 주세요.');
+  assert.strictEqual(msg(), '입력한 내용이 너무 길어요. 줄여서 다시 입력해 주세요.');
   h.type(h.byId['field-name'], '테스트참가자');
-  h.click(h.byId['info-next']); await settle();
-  assert.deepStrictEqual(h.page(), ['p-info'], 'email and organization are still empty');
-  assert.strictEqual(h.byId['field-email'].focused, true);
-  h.type(h.byId['field-email'], 'test@example.com');
-  h.click(h.byId['info-next']); await settle();
-  assert.deepStrictEqual(h.page(), ['p-info']);
-  assert.strictEqual(h.byId['field-org'].focused, true);
-  h.type(h.byId['field-org'], '테스트회사 대리');
   h.click(h.byId['info-next']); await settle();
   assert.deepStrictEqual(h.page(), ['p-concern']);
 });
@@ -846,6 +854,74 @@ test('F2r run: the info inputs are empty and the saving state is released once a
   assert.strictEqual(f.posts('submit')[0].info.organization, '테스트회사 대리');
   ['field-name', 'field-org', 'field-phone', 'field-email'].forEach((id) => assert.strictEqual(h.byId[id].value, '', id + ' is emptied'));
   assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).info, undefined);
+});
+
+// ============================================================================================ run: Codex review (C27)
+const mkQs = (n, firstId) => Array.from({ length: n }, (_, i) => ({ id: firstId && i === 0 ? firstId : 'q' + (i + 1), order: i + 1, type: 'text', title: '질문 ' + (i + 1), hint: '힌트' + (i + 1),
+  options: [], imageA: '', imageB: '', captionA: '', captionB: '', accepted: ['정답'], correct: '', explanation: '' }));
+
+test('F2r run: nine server questions plus the concern step make ten answers; ten server questions use the embedded fallback', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ questions: mkQs(9) })) : new Promise(() => {})));
+  const h = boot({ fetch: f });
+  await settle();
+  await fillInfo(h); await pickConcern(h, [0]);
+  for (let i = 1; i <= 9; i++) {
+    assert.strictEqual(h.text('q-title'), '질문 ' + i);
+    assert.strictEqual(h.text('q-next'), i === 9 ? '참여 완료' : '다음으로');
+    h.type(h.byId['q-answer'], '정답'); h.click(h.byId['q-confirm']); await settle();
+    h.click(h.byId['q-next']); await settle();
+  }
+  const body = f.posts('submit')[0];
+  assert.strictEqual(body.answers.length, 10);
+  assert.deepStrictEqual(body.answers.map((a) => a.questionId), ['concern', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9']);
+  // ten server questions: the embedded question is used, with its own content version
+  const f2 = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ questions: mkQs(10) })) : new Promise(() => {})));
+  const h2 = boot({ fetch: f2 });
+  await settle();
+  await fillInfo(h2); await pickConcern(h2, [0]);
+  assert.ok(h2.text('q-title').indexOf('히어로 SKU') !== -1, 'the embedded question');
+  await answerQuiz(h2, 'x');
+  const body2 = f2.posts('submit')[0];
+  assert.strictEqual(body2.contentVersion, DEFAULTS.embedded.contentVersion);
+  assert.deepStrictEqual(body2.answers.map((a) => a.questionId), ['concern', 'q1']);
+});
+
+test('F2r run: a server question with the reserved id concern falls back to the embedded content without duplicate ids', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ questions: mkQs(2, 'concern') })) : new Promise(() => {})));
+  const h = boot({ fetch: f });
+  await settle();
+  await fillInfo(h); await pickConcern(h, [1]);
+  assert.ok(h.text('q-title').indexOf('히어로 SKU') !== -1, 'the embedded question, not the Sheet question');
+  await answerQuiz(h, 'x');
+  const ids = f.posts('submit')[0].answers.map((a) => a.questionId);
+  assert.deepStrictEqual(ids, ['concern', 'q1']);
+  assert.strictEqual(new Set(ids).size, ids.length, 'no duplicate ids');
+});
+
+test('F2r run: stored progress for another consent text version or without all four fields resumes at the info form with the values kept', async () => {
+  const progress = (info, version) => storedState(undefined, {
+    stage: 'quiz', ticket: undefined, qIndex: 1, answers: { concern: '신제품을 기획 중이다' }, info, consent: { required: true, marketing: false, version }
+  });
+  const full = { name: '테스트참가자', organization: '테스트회사 대리', phone: '010-0000-0001', email: 'test@example.com' };
+  const f = fakeFetch(() => { throw new TypeError('offline'); }); // offline: the embedded consent text, version a-day-2026-v2
+  // an older consent version
+  const hA = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: progress(full, 'a-day-2026-v1') }) });
+  await settle(); await hA.advance(5100);
+  assert.deepStrictEqual(hA.page(), ['p-info']);
+  assert.strictEqual(hA.byId['field-name'].value, '테스트참가자');
+  assert.strictEqual(hA.byId['field-org'].value, '테스트회사 대리');
+  assert.strictEqual(hA.byId['field-email'].value, 'test@example.com');
+  assert.strictEqual(hA.byId['consent-required'].checked, false, 'the consent must be given again for the new text');
+  // a missing field (no organization), same version
+  const hB = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: progress(Object.assign({}, full, { organization: '' }), 'a-day-2026-v2') }) });
+  await settle(); await hB.advance(5100);
+  assert.deepStrictEqual(hB.page(), ['p-info']);
+  assert.strictEqual(hB.byId['field-name'].value, '테스트참가자');
+  assert.strictEqual(hB.byId['consent-required'].checked, true, 'the same consent text keeps its tick');
+  // complete and current: the quiz resumes
+  const hC = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: progress(full, 'a-day-2026-v2') }) });
+  await settle(); await hC.advance(5100);
+  assert.deepStrictEqual(hC.page(), ['p-quiz']);
 });
 
 test('F2r run: a throwing async callback shows the boot card and keeps a valid ticket visible', async () => {
