@@ -35,7 +35,7 @@
   var ERROR_TABLE = {
     INVALID_REQUEST: { message: '요청 정보가 올바르지 않아요. 새로고침 후 다시 시도해 주세요.', retryable: false, action: 'error-card' },
     REGISTRATION_CLOSED: { message: '지금은 참여 접수 시간이 아니에요.', retryable: false, action: 'error-card-no-retry' },
-    CONSENT_TEXT_MISSING: { message: "개인정보 동의 안내가 아직 준비되지 않았어요. 명함을 넣으셨다면 '명함을 명함함에 넣었어요'를 선택해 주세요.", retryable: false, action: 'back-to-info' },
+    CONSENT_TEXT_MISSING: { message: "개인정보 동의 안내가 아직 준비되지 않았어요. 부스 스태프에게 말씀해 주세요.", retryable: false, action: 'back-to-info' },
     REQUIRED_FIELDS: { message: '이름과 휴대폰 번호를 입력해 주세요.', retryable: false, action: 'back-to-info' },
     INVALID_PHONE: { message: '휴대폰 번호를 다시 확인해 주세요. (예: 010-1234-5678)', retryable: false, action: 'back-to-info' },
     INVALID_EMAIL: { message: '이메일 형식을 확인해 주세요.', retryable: false, action: 'back-to-info' },
@@ -66,7 +66,7 @@
     existingPhone: '이 번호로 이미 발급된 응모권을 불러왔어요.',
     statusChecking: '확인 중',
     statusUnknown: '확인 불가',
-    statusUnused: '스태프에게 이 화면을 보여주세요',
+    statusUnused: '룰렛 참여 전',
     statusUsedPrefix: '룰렛 참여 완료',
     recheck: '상태 다시 확인',
     demoWatermark: '미리보기 (사용 불가)'

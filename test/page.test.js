@@ -44,9 +44,8 @@ test('F2 page: script tags load defaults.js and quiz-core.js with the same ?v= b
 });
 
 test('F2 page: required data-testid hooks exist', () => {
-  const hooks = ['landing-start', 'card-skip', 'field-name', 'field-org', 'field-phone', 'field-email',
-    'consent-required', 'consent-marketing', 'info-next', 'q-title', 'q-hint', 'q-answer', 'q-next',
-    'saving-root', 'saving-retry', 'error-card'];
+  const hooks = ['field-name', 'field-org', 'field-phone', 'field-email', 'consent-required', 'info-next',
+    'concern-option', 'concern-next', 'q-title', 'q-hint', 'q-answer', 'q-next', 'saving-root', 'saving-retry', 'error-card'];
   hooks.forEach((h) => {
     assert.ok(markup.indexOf('data-testid="' + h + '"') !== -1, 'missing data-testid="' + h + '" in the static markup');
   });
@@ -80,22 +79,20 @@ test('F2 page: no google.script, iframe, script.google.com navigation, pushState
   assert.strictEqual(html.indexOf('246810'), -1);
 });
 
-test('F2 page: landing contains the POP title and tagline verbatim', () => {
-  const m = markup.match(/<section[^>]*id="p-landing"[^>]*>([\s\S]*?)<\/section>/);
-  assert.ok(m, 'landing section missing');
-  const landing = m[1];
-  assert.ok(landing.includes('Valen 행운퀴즈'));
-  assert.ok(landing.includes('힌트 보면 다 맞혀요. 1분이면 경품까지'));
+test('F2 page: the first screen carries the team title, fields, consent text and footnote verbatim', () => {
+  const m = markup.match(/<section[^>]*id="p-info"[^>]*>([\s\S]*?)<\/section>/);
+  assert.ok(m, 'info section missing');
+  const info = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   [
-    '참여 방법',
-    '명함을 명함함에 넣어 주세요 (명함이 없으면 다음 화면에서 정보를 입력해요)',
-    '행운퀴즈를 풀어요',
-    '응모권을 받아 행운의 룰렛을 돌려요',
-    '기프트백을 받아 가세요',
-    '시작하기',
-    '참여 정보는 행사 운영 목적으로만 사용돼요.'
-  ].forEach((s) => assert.ok(landing.includes(s), 'landing is missing: ' + s));
-  assert.ok(/<title>Valen 행운퀴즈<\/title>/.test(html));
+    'Valen Lucky Quiz', '이름', '이메일', '연락처', '소속 (회사명·직책)', '(필수) 개인정보 수집·이용에 동의합니다', '펼쳐보기', '다음으로',
+    '입력해주신 정보는 명함 응모와 동일하게 처리됩니다. 이벤트 참여 및 경품 추첨에 활용됩니다.'
+  ].forEach((t) => assert.ok(info.includes(t), 'the first screen is missing: ' + t));
+  assert.ok(!/card-skip|명함을 명함함에/.test(markup), 'the card path is gone');
+  assert.ok(!/consent-marketing|마케팅/.test(markup), 'no marketing checkbox');
+  assert.ok(/<title>Valen Lucky Quiz<\/title>/.test(html));
+  // the concern step and the quiz screen use the team copy
+  ['지금 가장 가까운 상황을 선택해주세요.', '(중복체크 가능)', '오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다', '힌트 :', '참여 완료']
+    .forEach((t) => assert.ok(markup.includes(t), 'missing: ' + t));
 });
 
 test('F2 page: inline script parses (vm.Script) and uses no ?. or ??', () => {
@@ -141,7 +138,7 @@ test('F2r page: comments are English only and the page declares a dark color sch
       if (at !== -1) { assert.ok(!/[\u3131-\uD79D]/.test(line.slice(at)), 'Korean in a script comment (script ' + i + '): ' + line.trim()); }
     });
   });
-  assert.ok(/<meta name="color-scheme" content="dark">/.test(html));
+  assert.ok(/<meta name="color-scheme" content="light">/.test(html), 'the page is light now');
 });
 
 test('F2r page: boot copy, phone input and answer input attributes are pinned', () => {
@@ -150,7 +147,8 @@ test('F2r page: boot copy, phone input and answer input attributes are pinned', 
   ['type="tel"', 'inputmode="numeric"', 'placeholder="010-1234-5678"'].forEach((a) => assert.ok(phone.indexOf(a) !== -1, 'phone input needs ' + a));
   const answer = markup.match(/<input[^>]*data-testid="q-answer"[^>]*>/)[0];
   ['autocapitalize="off"', 'autocorrect="off"', 'spellcheck="false"', 'placeholder="정답을 입력해 주세요"'].forEach((a) => assert.ok(answer.indexOf(a) !== -1, 'answer input needs ' + a));
-  assert.ok(markup.indexOf('체크하면 정보 입력 없이 퀴즈를 풀 수 있어요.') !== -1, 'card checkbox subline');
+  // The collected-items line of the server config is never rendered (the team text has its own).
+  assert.ok(!/consent-items|\.collectedItems/.test(app), 'the page does not render collectedItems');
 });
 
 test('F2r page: async callbacks are guarded and both global error handlers are registered', () => {
@@ -168,7 +166,7 @@ test('F3 page: ticket and staff hooks exist (ticket-root, ticket-no, ticket-issu
   ['ticket-root', 'ticket-no', 'ticket-issued', 'ticket-status', 'ticket-clock', 'staff-toggle', 'staff-pin', 'staff-redeem', 'staff-result']
     .forEach((h) => assert.ok(markup.indexOf('data-testid="' + h + '"') !== -1, 'missing data-testid="' + h + '"'));
   assert.ok(/id="ticket-slot"[^>]*data-testid="ticket-root"/.test(markup), '#ticket-slot carries ticket-root');
-  ['행운의 룰렛 응모권', '응모권은 1인 1회만 사용할 수 있어요.', '스태프 확인', '룰렛 완료 처리']
+  ['참여해주셔서 감사합니다', 'Lucky Quiz', '이 화면을 보여주세요', 'assets/gift.webp', 'assets/valen-logo.webp', '응모권은 1인 1회만 사용할 수 있어요.', '스태프 확인', '룰렛 완료 처리']
     .forEach((s) => assert.ok(markup.indexOf(s) !== -1, 'missing copy: ' + s));
   const clockRule = html.match(/\.ticket \.clock \{[^}]*\}/);
   assert.ok(clockRule && clockRule[0].indexOf('tabular-nums') !== -1, 'the clock needs tabular-nums');
@@ -215,6 +213,7 @@ class El {
   all() { const out = []; (function walk(n) { n.children.forEach((c) => { out.push(c); walk(c); }); })(this); return out; }
   querySelectorAll(sel) { const tags = sel.split(',').map((s) => s.trim()); return this.all().filter((e) => tags.indexOf(e.tagName) !== -1); }
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
+  get parentNode() { return this.parent; }
   get visible() { let n = this; while (n) { if (n.hidden) { return false; } n = n.parent; } return true; }
 }
 function buildDom(source) {
@@ -283,7 +282,9 @@ function boot(opts) {
   const session = o.session || makeStorage();
   const FDate = class extends Date { constructor(...a) { if (a.length) { super(...a); } else { super(clock.now); } } static now() { return clock.now; } };
   const winListeners = {};
+  const body = new El('body');
   const doc = {
+    body,
     getElementById: (id) => byId[id] || null,
     createElement: (t) => new El(t),
     querySelectorAll: (sel) => (sel === '.page' ? root.all().filter((e) => e.classList.contains('page')) : [])
@@ -312,7 +313,7 @@ function boot(opts) {
     }
   }
   return {
-    byId, clock, local, session, win,
+    byId, clock, local, session, win, body,
     click(el) {
       if (el.disabled) { return; }
       fireEl(el, 'click');
@@ -322,7 +323,7 @@ function boot(opts) {
     check(el, v) { el.checked = v; fireEl(el, 'input'); fireEl(el, 'change'); },
     fireWin(type, ev) { (winListeners[type] || []).forEach((fn) => fn(ev)); },
     vis(id) { return byId[id].visible; },
-    page() { return ['p-landing', 'p-info', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'].filter((p) => byId[p].visible); },
+    page() { return ['p-info', 'p-concern', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'].filter((p) => byId[p].visible); },
     text(id) { return byId[id].textContent; },
     advance: clock.advance
   };
@@ -332,11 +333,13 @@ function boot(opts) {
 const env = (data) => JSON.stringify({ ok: true, apiVersion: 3, serverMs: 5, data });
 const errEnv = (code, retryable) => JSON.stringify({ ok: false, apiVersion: 3, serverMs: 5, code, message: 'x', retryable: !!retryable });
 const mkTicket = (n, extra) => Object.assign({ ticketId: 'tid-' + n + '-aaaaaaaaaaaaaaaa', ticketToken: 'tok-' + n + '-bbbbbbbbbbbbbbbb', ticketNo: n,
-  ticketLabel: 'No. ' + String(n).padStart(3, '0'), eventId: 'a-day-2026', entryType: 'card', issuedAt: '2026-10-14T06:03:00.000Z', issuedLabel: '15:03',
+  ticketLabel: 'No. ' + String(n).padStart(3, '0'), eventId: 'a-day-2026', entryType: 'info', issuedAt: '2026-10-14T06:03:00.000Z', issuedLabel: '15:03',
   redeemed: false, redeemedAt: '', redeemedLabel: '' }, extra || {});
+// The live server config carries its own collectedItems line (Api.gs); the page must never show it.
+const LIVE_COLLECTED = '수집 항목: 이름, 휴대폰 번호, 소속(입력한 경우), 이메일(입력한 경우), 퀴즈 응답, 기기 식별값(중복 참여 방지용)';
 const cfgData = (extra) => Object.assign({ eventId: 'a-day-2026', eventName: 'Valen 행운퀴즈', registrationOpen: true, infoPathReady: true, contentVersion: 'v1', contentReady: true,
   questions: [{ id: 'q1', order: 1, type: 'text', title: '서버 질문', hint: '서버힌트', options: [], imageA: '', imageB: '', captionA: '', captionB: '', accepted: ['정답'], correct: '', explanation: '설명입니다' }],
-  consent: { version: 'cv1', collectedItems: '수집 항목: 테스트', requiredDetail: '필수 안내', marketingDetail: '', privacyNoticeUrl: '' } }, extra || {});
+  consent: { version: 'cv1', collectedItems: LIVE_COLLECTED, requiredDetail: '서버 동의 안내', marketingDetail: '', privacyNoticeUrl: '' } }, extra || {});
 function fakeFetch(handler) {
   const calls = [];
   const f = (url, init) => {
@@ -351,25 +354,42 @@ function fakeFetch(handler) {
 }
 const STORE_KEY = 'valen-quiz:v3';
 function storedState(ticket, extra) {
-  return JSON.stringify(Object.assign({ v: 3, savedAt: 1760000000000, eventId: 'a-day-2026', stage: 'ticket', entryType: 'card', answers: {}, qIndex: 0, ticket }, extra || {}));
+  return JSON.stringify(Object.assign({ v: 3, savedAt: 1760000000000, eventId: 'a-day-2026', stage: 'ticket', entryType: 'info', answers: {}, qIndex: 0, ticket }, extra || {}));
 }
 const PIN = '7391';
-// Card path up to the saving screen (the question is answered, the ticket button is tapped).
-async function cardPathToTicket(h) {
-  h.click(h.byId['landing-start']); await settle();
-  h.check(h.byId['card-skip'], true); h.click(h.byId['info-next']); await settle();
-  h.type(h.byId['q-answer'], '정답'); h.click(h.byId['q-confirm']); await settle();
+const TEAM_CONSENT = [
+  '- 수집 항목 : 이름, 연락처, 이메일, 회사명·직책, 고민 유형·퀴즈 응답, 기기 식별값(중복 참여 방지용)',
+  '- 이용 목적 이벤트 운영(참여 확인·경품 추첨)',
+  '- 보유 기간 수집일로부터 1년 (목적 달성 시 지체 없이 파기)',
+  '- 귀하는 개인정보 수집 및 이용에 대한 동의를 거부할 권리가 있습니다. 단, 필수 항목 동의 거부 시 이벤트 참여 및 경품 수령이 제한됩니다.'
+];
+// ---- flow helpers (the first screen is the info form; then the concern step; then the quiz)
+async function fillInfo(h, over) {
+  const v = Object.assign({ name: '테스트참가자', email: 'test@example.com', phone: '010-0000-0001', org: '테스트회사 대리' }, over || {});
+  h.type(h.byId['field-name'], v.name); h.type(h.byId['field-email'], v.email);
+  h.type(h.byId['field-phone'], v.phone); h.type(h.byId['field-org'], v.org);
+  h.check(h.byId['consent-required'], true);
+  h.click(h.byId['info-next']); await settle();
+}
+const concernBoxes = (h) => h.byId['p-concern'].querySelectorAll('input');
+async function pickConcern(h, indexes) {
+  indexes.forEach((i) => h.check(concernBoxes(h)[i], true));
+  h.click(h.byId['concern-next']); await settle();
+}
+async function answerQuiz(h, text) {
+  h.type(h.byId['q-answer'], text || '정답'); h.click(h.byId['q-confirm']); await settle();
   h.click(h.byId['q-next']); await settle();
 }
+async function flowToSaving(h) { await fillInfo(h); await pickConcern(h, [0]); await answerQuiz(h); }
 
 // ============================================================================================ run: F2 flows
-test('F2r run: demo card path reaches the ticket with no network call and only demo: keys', async () => {
+test('F2r run: the demo flow reaches the final screen with no network call and only demo: keys', async () => {
   const f = fakeFetch(() => { throw new Error('the network must not be touched in demo'); });
   const h = boot({ search: '?demo=1', fetch: f });
   await settle();
-  assert.deepStrictEqual(h.page(), ['p-landing']);
+  assert.deepStrictEqual(h.page(), ['p-info'], 'the info form is the first screen');
   assert.strictEqual(h.vis('demo-badge'), true);
-  await cardPathToTicket(h);
+  await flowToSaving(h);
   assert.deepStrictEqual(h.page(), ['p-ticket']);
   assert.strictEqual(h.text('ticket-no'), 'No. 001');
   assert.strictEqual(f.calls.length, 0);
@@ -377,10 +397,10 @@ test('F2r run: demo card path reaches the ticket with no network call and only d
   assert.deepStrictEqual(Array.from(h.session.map.keys()).filter((k) => !k.startsWith('demo:')), []);
 });
 
-test('F2r run: the info path blocks without name, phone and consent, with the exact copy', async () => {
+test('F2r run: the info form needs all four fields and consent; the K1 copy is exact; the team consent text and footnote show', async () => {
   const h = boot({ search: '?demo=1' });
   await settle();
-  h.click(h.byId['landing-start']); await settle();
+  assert.strictEqual(h.text('consent-detail'), TEAM_CONSENT.join(String.fromCharCode(10)), 'the demo shows the embedded team text (lines joined by the DOM)');
   h.click(h.byId['info-next']); await settle();
   assert.strictEqual(h.text('info-error'), '이름과 휴대폰 번호를 입력해 주세요.');
   h.type(h.byId['field-name'], '테스트참가자'); h.type(h.byId['field-phone'], '010-0000-0001');
@@ -392,26 +412,94 @@ test('F2r run: the info path blocks without name, phone and consent, with the ex
   assert.strictEqual(h.text('info-error'), '입력한 내용이 너무 길어요. 줄여서 다시 입력해 주세요.');
   h.type(h.byId['field-name'], '테스트참가자');
   h.click(h.byId['info-next']); await settle();
-  assert.deepStrictEqual(h.page(), ['p-quiz']);
+  assert.deepStrictEqual(h.page(), ['p-info'], 'email and organization are still empty');
+  assert.strictEqual(h.byId['field-email'].focused, true);
+  h.type(h.byId['field-email'], 'test@example.com');
+  h.click(h.byId['info-next']); await settle();
+  assert.deepStrictEqual(h.page(), ['p-info']);
+  assert.strictEqual(h.byId['field-org'].focused, true);
+  h.type(h.byId['field-org'], '테스트회사 대리');
+  h.click(h.byId['info-next']); await settle();
+  assert.deepStrictEqual(h.page(), ['p-concern']);
 });
 
-test('F2r run: no consent text focuses the card checkbox, and a closed registration is not pre-checked on the landing', async () => {
+test('F2r run: the concern step shows its hint only after a pick, sends the labels joined by " | " and survives a reload', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {})));
+  const local = makeStorage();
+  const h = boot({ fetch: f, local });
+  await settle();
+  await fillInfo(h);
+  assert.deepStrictEqual(h.page(), ['p-concern']);
+  assert.strictEqual(h.byId['concern-hint'].hidden, true);
+  assert.strictEqual(h.byId['concern-next'].disabled, true);
+  const labels = concernBoxes(h).map((b) => b.value);
+  assert.deepStrictEqual(labels, ['신제품을 기획 중이다', '해외 진출을 준비 중이다', '광고 효율 개선이 필요하다', '크리에이터 협업을 검토 중이다', '해당하지 않지만, 발렌을 알고 싶다']);
+  h.check(concernBoxes(h)[1], true); h.check(concernBoxes(h)[3], true);
+  assert.strictEqual(h.byId['concern-hint'].hidden, false);
+  assert.strictEqual(h.text('concern-hint'), '오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다');
+  assert.strictEqual(h.byId['concern-next'].disabled, false);
+  // reload: the picks are stored like any answer, and the quiz is next
+  const h2 = boot({ fetch: f, local });
+  await settle();
+  assert.deepStrictEqual(h2.page(), ['p-quiz'], 'a stored pick means the concern step is done');
+  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).answers.concern, '해외 진출을 준비 중이다 | 크리에이터 협업을 검토 중이다');
+  // the quiz: "힌트 :" line, explanation after the answer, CTA "참여 완료", no right/wrong line
+  assert.ok(h2.text('q-hint').indexOf('힌트 :') !== -1);
+  assert.strictEqual(h2.byId['q-next'].hidden, true);
+  h2.type(h2.byId['q-answer'], '틀린 답'); h2.click(h2.byId['q-confirm']); await settle();
+  assert.strictEqual(h2.text('q-feedback'), '설명입니다');
+  assert.strictEqual(h2.text('q-next'), '참여 완료');
+  assert.ok(['정답이에요!', '아쉬워요!', '정답:'].every((s) => h2.byId['p-quiz'].textContent.indexOf(s) === -1), 'no right/wrong feedback');
+  h2.click(h2.byId['q-next']); await settle();
+  const body = f.posts('submit')[0];
+  assert.strictEqual(body.entryType, 'info');
+  assert.deepStrictEqual(body.answers[0], { questionId: 'concern', value: '해외 진출을 준비 중이다 | 크리에이터 협업을 검토 중이다' });
+  assert.deepStrictEqual(body.answers[1], { questionId: 'q1', value: '틀린 답' });
+  assert.deepStrictEqual(body.consent, { required: true, marketing: false, version: 'cv1' });
+  assert.ok(body.answers[0].value.length <= 100);
+});
+
+test('F2r run: the embedded explanation shows offline and the consent collected-items line of the server never reaches the page', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {})));
+  const h = boot({ fetch: f });
+  await settle();
+  assert.strictEqual(h.text('consent-detail'), '서버 동의 안내', 'the server consent text wins when it is set');
+  const dom = h.byId['p-info'].textContent + h.byId['p-concern'].textContent + h.byId['p-quiz'].textContent + h.byId['p-ticket'].textContent;
+  assert.strictEqual(dom.indexOf(LIVE_COLLECTED), -1);
+  assert.strictEqual(dom.indexOf('기기 식별값'), -1);
+  const f2 = fakeFetch(() => { throw new TypeError('offline'); });
+  const h2 = boot({ fetch: f2 });
+  await settle();
+  assert.strictEqual(h2.text('consent-detail'), TEAM_CONSENT.join(String.fromCharCode(10)), 'offline: the embedded team text');
+  assert.strictEqual(h2.byId['info-error'].hidden, true, 'the info path is open offline');
+  await fillInfo(h2);
+  await h2.advance(5100); // the config fails, then the embedded content is used
+  await pickConcern(h2, [0]);
+  h2.type(h2.byId['q-answer'], 'x'); h2.click(h2.byId['q-confirm']); await settle();
+  assert.strictEqual(h2.text('q-feedback'), '80개 브랜드 데이터 기반으로 쌓은 Insight 와 Valen Agent 를 오후 5시에서 보실 수 있습니다.');
+  assert.ok(h2.byId['p-info'].textContent.indexOf(LIVE_COLLECTED) === -1);
+});
+
+test('F2r run: no consent text blocks the info form up front, and a closed registration is not pre-checked', async () => {
   const f = fakeFetch((url, init) => {
     if (init.method === 'GET') { return env(cfgData({ infoPathReady: false, registrationOpen: false })); }
     return errEnv('REGISTRATION_CLOSED', false);
   });
   const h = boot({ fetch: f });
   await settle();
-  h.click(h.byId['landing-start']); await settle();
-  assert.deepStrictEqual(h.page(), ['p-info'], 'the landing lets the person start whatever the config says');
-  h.click(h.byId['info-next']); await settle();
-  assert.strictEqual(h.byId['card-skip'].focused, true);
-  assert.strictEqual(h.byId['consent-required'].focused, false);
-  h.check(h.byId['card-skip'], true); h.click(h.byId['info-next']); await settle();
-  h.type(h.byId['q-answer'], 'a'); h.click(h.byId['q-confirm']); await settle();
-  h.click(h.byId['q-next']); await settle();
-  assert.deepStrictEqual(h.page(), ['p-error']);
-  assert.strictEqual(h.byId['p-error'].getAttribute('data-error-code'), 'REGISTRATION_CLOSED');
+  assert.deepStrictEqual(h.page(), ['p-info']);
+  assert.strictEqual(h.byId['info-error'].hidden, false);
+  assert.strictEqual(h.byId['info-error'].getAttribute('data-error-code'), 'CONSENT_TEXT_MISSING');
+  await fillInfo(h);
+  assert.strictEqual(h.byId['consent-required'].focused, true);
+  assert.deepStrictEqual(h.page(), ['p-info']);
+  // a config that is fine but closed: the form works and the server answers at the end
+  const f2 = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ registrationOpen: false })) : errEnv('REGISTRATION_CLOSED', false)));
+  const h2 = boot({ fetch: f2 });
+  await settle();
+  await flowToSaving(h2);
+  assert.deepStrictEqual(h2.page(), ['p-error']);
+  assert.strictEqual(h2.byId['p-error'].getAttribute('data-error-code'), 'REGISTRATION_CLOSED');
 });
 
 test('F2r run: offline saving retries with one body; a manual retry after exhaustion stores the ticket', async () => {
@@ -422,9 +510,9 @@ test('F2r run: offline saving retries with one body; a manual retry after exhaus
   });
   const h = boot({ fetch: f });
   await settle();
-  h.click(h.byId['landing-start']); await settle();
-  h.check(h.byId['card-skip'], true); h.click(h.byId['info-next']); await settle();
-  await h.advance(5100);
+  await fillInfo(h);
+  await h.advance(5100); // the config fails (offline), then the embedded content is used
+  await pickConcern(h, [0]);
   h.type(h.byId['q-answer'], 'x'); h.click(h.byId['q-confirm']); await settle();
   h.click(h.byId['q-next']); h.byId['q-next'].onclick(); // a second tap in the same tick
   await h.advance(60000);
@@ -445,8 +533,7 @@ test('F2r run: the saving text is written only when it changes; a locked answer 
   const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {})));
   const h = boot({ fetch: f });
   await settle();
-  h.click(h.byId['landing-start']); await settle();
-  h.check(h.byId['card-skip'], true); h.click(h.byId['info-next']); await settle();
+  await fillInfo(h); await pickConcern(h, [0]);
   h.type(h.byId['q-answer'], 'a'); h.click(h.byId['q-confirm']); await settle();
   assert.strictEqual(h.byId['q-answer'].readOnly, true);
   assert.strictEqual(h.byId['q-answer'].disabled, false);
@@ -465,14 +552,15 @@ test('F3r run: the clock ticks every second and a redeemed demo ticket stays use
   const session = makeStorage();
   const h = boot({ search: '?demo=1', session, clock });
   await settle();
-  await cardPathToTicket(h);
+  await flowToSaving(h);
   assert.deepStrictEqual(h.page(), ['p-ticket']);
   assert.ok(/^지금 \d\d:\d\d:\d\d$/.test(h.text('ticket-clock')));
   const t0 = h.text('ticket-clock');
   await clock.advance(1000);
   assert.notStrictEqual(h.text('ticket-clock'), t0, 'the clock moved after one second');
   assert.strictEqual(h.text('ticket-demo'), '미리보기 (사용 불가)');
-  assert.strictEqual(h.text('ticket-status'), '스태프에게 이 화면을 보여주세요');
+  assert.strictEqual(h.text('ticket-status'), '룰렛 참여 전');
+  assert.ok(h.body.classList.contains('done'), 'the final screen has its own page background');
   h.click(h.byId['staff-toggle']);
   assert.strictEqual(h.byId['staff-panel'].hidden, false);
   h.type(h.byId['staff-pin'], PIN); h.click(h.byId['staff-redeem']); await settle();
@@ -505,11 +593,9 @@ test('F3r run: the redeem requestId persists across re-taps until a definitive a
     if (init.method === 'GET') { return env(cfgData()); }
     if (b.action === 'ticket') { return env({ ticket: mkTicket(3) }); }
     if (failing) { throw new TypeError('offline'); }
-    const prior = f.posts('redeem').filter((x) => x.requestId !== b.requestId).length;
     const first = f.posts('redeem')[0].requestId;
-    return prior === 0 || b.requestId === first
-      ? env({ status: 'REDEEMED', ticket: mkTicket(3, { redeemed: true, redeemedAt: '2026-10-14T06:10:00.000Z', redeemedLabel: '15:10' }), timing: {} })
-      : env({ status: 'ALREADY_REDEEMED', ticket: mkTicket(3, { redeemed: true, redeemedAt: '2026-10-14T06:10:00.000Z', redeemedLabel: '15:10' }), timing: {} });
+    const used = mkTicket(3, { redeemed: true, redeemedAt: '2026-10-14T06:10:00.000Z', redeemedLabel: '15:10' });
+    return env({ status: b.requestId === first ? 'REDEEMED' : 'ALREADY_REDEEMED', ticket: used, timing: {} });
   });
   const local = makeStorage({ [STORE_KEY]: storedState(mkTicket(3)) });
   const h = boot({ fetch: f, local });
@@ -571,18 +657,18 @@ test('F3r run: reload shows the stored status first; used never goes back to unu
   });
   const h3 = boot({ fetch: f3, local: makeStorage({ [STORE_KEY]: storedState(mkTicket(4)) }) });
   await settle(); await h3.advance(5000);
-  assert.strictEqual(h3.text('ticket-status'), '스태프에게 이 화면을 보여주세요');
+  assert.strictEqual(h3.text('ticket-status'), '룰렛 참여 전');
   assert.strictEqual(h3.byId['ticket-recheck'].hidden, false);
   assert.strictEqual(h3.text('ticket-recheck'), '상태 다시 확인');
   online = true;
   h3.click(h3.byId['ticket-recheck']); await settle();
   assert.strictEqual(h3.text('ticket-status'), '룰렛 참여 완료 (15:10)');
   assert.strictEqual(h3.byId['ticket-recheck'].hidden, true);
-  // 4. a config for another event clears the stored ticket and returns to the landing
+  // 4. a config for another event clears the stored ticket and returns to the first screen
   const f4 = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ eventId: 'phonetest-1012' })) : env({ ticket: mkTicket(4) })));
   const h4 = boot({ fetch: f4, local: makeStorage({ [STORE_KEY]: storedState(mkTicket(4)) }) });
   await settle();
-  assert.deepStrictEqual(h4.page(), ['p-landing']);
+  assert.deepStrictEqual(h4.page(), ['p-info']);
 });
 
 test('F3r run: TICKET_NOT_FOUND from a redeem shows 확인 불가; a redeem answer after the page moved on is ignored; a config reset clears the staff panel', async () => {
@@ -597,7 +683,7 @@ test('F3r run: TICKET_NOT_FOUND from a redeem shows 확인 불가; a redeem answ
   h1.type(h1.byId['staff-pin'], PIN); h1.click(h1.byId['staff-redeem']); await settle();
   assert.strictEqual(h1.text('staff-result'), '응모권을 확인할 수 없어요. 부스 스태프에게 이 화면을 보여주세요.');
   assert.strictEqual(h1.text('ticket-status'), '확인 불가');
-  // r2 and r3: the redeem answer arrives after a config for another event reset the page
+  // r2: the redeem answer arrives after a config for another event reset the page
   let release;
   const slow = new Promise((resolve) => { release = () => resolve({ text: () => Promise.resolve(env({ status: 'REDEEMED', ticket: mkTicket(9, { redeemed: true, redeemedLabel: '15:10' }), timing: {} })) }); });
   let cfgRelease;
@@ -612,7 +698,7 @@ test('F3r run: TICKET_NOT_FOUND from a redeem shows 확인 불가; a redeem answ
   h2.click(h2.byId['staff-toggle']);
   h2.type(h2.byId['staff-pin'], PIN); h2.click(h2.byId['staff-redeem']); await settle();
   cfgRelease(); await settle(); // the other event resets the page while the redeem is in flight
-  assert.deepStrictEqual(h2.page(), ['p-landing']);
+  assert.deepStrictEqual(h2.page(), ['p-info']);
   release(); await settle();
   assert.strictEqual(h2.text('staff-result'), '', 'a late redeem answer does not write into the new page');
   assert.ok(!JSON.parse(local2.map.get(STORE_KEY) || '{}').ticket, 'the old ticket was not written back');
@@ -626,7 +712,7 @@ test('F3r run: TICKET_NOT_FOUND from a redeem shows 확인 불가; a redeem answ
   h3.type(h3.byId['staff-pin'], '12'); h3.click(h3.byId['staff-redeem']); await settle();
   assert.strictEqual(h3.text('staff-result'), '확인 번호가 맞지 않아요.', 'a result is on screen before the reset');
   cfgRelease3(); await settle();
-  assert.deepStrictEqual(h3.page(), ['p-landing']);
+  assert.deepStrictEqual(h3.page(), ['p-info']);
   assert.strictEqual(h3.byId['staff-panel'].hidden, true, 'the staff panel is closed');
   assert.strictEqual(h3.byId['staff-toggle'].getAttribute('aria-expanded'), 'false');
   assert.strictEqual(h3.text('staff-result'), '');
@@ -636,9 +722,9 @@ test('F3r run: TICKET_NOT_FOUND from a redeem shows 확인 불가; a redeem answ
 const DEVICE_KEY = 'valen-quiz:device';
 const DEVICE_ID = 'dev-0000-aaaa-bbbb-cccc';
 function pendingState(extra) {
-  const body = { action: 'submit', apiVersion: 3, requestId: 'req-pending-aaaaaaaa', deviceId: DEVICE_ID, entryType: 'card', info: null, consent: null,
-    contentVersion: 'v1', answers: [{ questionId: 'q1', value: '정답' }], build: DEFAULTS.build };
-  return JSON.stringify(Object.assign({ v: 3, savedAt: 1760000000000, eventId: 'a-day-2026', stage: 'saving', entryType: 'card', answers: { q1: '정답' }, qIndex: 0,
+  const body = { action: 'submit', apiVersion: 3, requestId: 'req-pending-aaaaaaaa', deviceId: DEVICE_ID, entryType: 'info', info: { name: '테스트참가자', organization: '테스트회사', phone: '010-0000-0001', email: 'test@example.com' },
+    consent: { required: true, marketing: false, version: 'a-day-2026-v1' }, contentVersion: 'v1', answers: [{ questionId: 'q1', value: '정답' }], build: DEFAULTS.build };
+  return JSON.stringify(Object.assign({ v: 3, savedAt: 1760000000000, eventId: 'a-day-2026', stage: 'saving', entryType: 'info', answers: { concern: '신제품을 기획 중이다', q1: '정답' }, qIndex: 1,
     pending: { requestId: body.requestId, body } }, extra || {}));
 }
 function deferred() {
@@ -648,14 +734,14 @@ function deferred() {
 }
 
 test('F2r run: a stored pending request waits for config and is not replayed into another event', async () => {
-  // another event: no replay, landing, the stored state is gone, the device id stays
+  // another event: no replay, the first screen, the stored state is gone, the device id stays
   const fA = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ eventId: 'phonetest-1012' })) : env({ ticket: mkTicket(1) })));
   const localA = makeStorage({ [STORE_KEY]: pendingState(), [DEVICE_KEY]: DEVICE_ID });
   const hA = boot({ fetch: fA, local: localA });
   await settle();
   assert.strictEqual(fA.posts('submit').length, 0, 'no replay into another event');
-  assert.deepStrictEqual(hA.page(), ['p-landing']);
-  assert.strictEqual(localA.map.has(STORE_KEY), false);
+  assert.deepStrictEqual(hA.page(), ['p-info']);
+  assert.ok(!JSON.parse(localA.map.get(STORE_KEY)).pending, 'no pending request is left');
   assert.strictEqual(localA.map.get(DEVICE_KEY), DEVICE_ID);
   // slow config: nothing is sent while it is awaited; the same event then replays with the same requestId
   const cfgD = deferred();
@@ -685,18 +771,17 @@ test('F2r run: a config for another event that arrives while saving wins over th
   const local = makeStorage({ [DEVICE_KEY]: DEVICE_ID });
   const h = boot({ fetch: f, local });
   await settle();
-  h.click(h.byId['landing-start']); await settle();
-  h.check(h.byId['card-skip'], true); h.click(h.byId['info-next']); await settle();
-  await h.advance(5100); // config still pending: the embedded question
-  h.type(h.byId['q-answer'], 'x'); h.click(h.byId['q-confirm']); await settle();
-  h.click(h.byId['q-next']); await settle();
+  await fillInfo(h);
+  await h.advance(5100); // config still pending: the embedded content
+  await pickConcern(h, [0]);
+  await answerQuiz(h, 'x');
   assert.deepStrictEqual(h.page(), ['p-saving']);
   cfgD.resolve(env(cfgData({ eventId: 'phonetest-1012' }))); await settle(); // config B while saving
   assert.deepStrictEqual(h.page(), ['p-saving'], 'config does not interrupt the request in flight');
   postD.resolve(env({ ticket: mkTicket(5), repeated: false, existing: '', timing: {} })); await settle(); // ticket of event A
-  assert.deepStrictEqual(h.page(), ['p-landing'], 'a ticket of another event is not shown');
+  assert.deepStrictEqual(h.page(), ['p-info'], 'a ticket of another event is not shown');
   assert.strictEqual(h.text('ticket-no'), '');
-  assert.strictEqual(local.map.has(STORE_KEY), false, 'and not stored');
+  assert.ok(!JSON.parse(local.map.get(STORE_KEY) || '{}').ticket, 'and not stored');
   assert.ok(local.writes.length >= 1);
   assert.ok(local.writes.every((w) => w.indexOf('tid-5-') === -1 && w.indexOf('tok-5-') === -1), 'no write ever contained the ticket of the other event');
   assert.strictEqual(local.map.get(DEVICE_KEY), DEVICE_ID);
@@ -707,11 +792,10 @@ test('F2r run: a config for another event that arrives while saving wins over th
   const local2 = makeStorage();
   const h2 = boot({ fetch: f2, local: local2 });
   await settle();
-  h2.click(h2.byId['landing-start']); await settle();
-  h2.check(h2.byId['card-skip'], true); h2.click(h2.byId['info-next']); await settle();
+  await fillInfo(h2);
   await h2.advance(5100);
-  h2.type(h2.byId['q-answer'], 'x'); h2.click(h2.byId['q-confirm']); await settle();
-  h2.click(h2.byId['q-next']); await settle();
+  await pickConcern(h2, [0]);
+  await answerQuiz(h2, 'x');
   cfgE.resolve(env(cfgData())); await settle();
   postE.resolve(env({ ticket: mkTicket(6), repeated: false, existing: '', timing: {} })); await settle();
   assert.deepStrictEqual(h2.page(), ['p-ticket']);
@@ -724,7 +808,7 @@ test('F2r run: a success without a valid ticket is retried and never shown; the 
   const local = makeStorage();
   const h = boot({ fetch: f, local });
   await settle();
-  await cardPathToTicket(h);
+  await flowToSaving(h);
   await h.advance(60000);
   const posts = f.posts('submit');
   assert.strictEqual(posts.length, 4, 'four automatic attempts');
@@ -744,7 +828,7 @@ test('F2r run: a success without a valid ticket is retried and never shown; the 
   });
   const h2 = boot({ fetch: f2 });
   await settle();
-  await cardPathToTicket(h2);
+  await flowToSaving(h2);
   await h2.advance(5000);
   assert.strictEqual(n, 2, 'retried automatically within the loop, without a tap');
   assert.deepStrictEqual(h2.page(), ['p-ticket']);
@@ -752,19 +836,14 @@ test('F2r run: a success without a valid ticket is retried and never shown; the 
 });
 
 test('F2r run: the info inputs are empty and the saving state is released once a valid ticket is shown', async () => {
-  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : env({ ticket: mkTicket(7, { entryType: 'info' }), repeated: false, existing: '', timing: {} })));
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : env({ ticket: mkTicket(7), repeated: false, existing: '', timing: {} })));
   const local = makeStorage();
   const h = boot({ fetch: f, local });
   await settle();
-  h.click(h.byId['landing-start']); await settle();
-  h.type(h.byId['field-name'], '테스트참가자'); h.type(h.byId['field-org'], '테스트회사');
-  h.type(h.byId['field-phone'], '010-0000-0007'); h.type(h.byId['field-email'], 'test@example.com');
-  h.check(h.byId['consent-required'], true);
-  h.click(h.byId['info-next']); await settle();
-  h.type(h.byId['q-answer'], '정답'); h.click(h.byId['q-confirm']); await settle();
-  h.click(h.byId['q-next']); await settle();
+  await flowToSaving(h);
   assert.deepStrictEqual(h.page(), ['p-ticket']);
   assert.strictEqual(f.posts('submit')[0].info.name, '테스트참가자', 'the request carried the info');
+  assert.strictEqual(f.posts('submit')[0].info.organization, '테스트회사 대리');
   ['field-name', 'field-org', 'field-phone', 'field-email'].forEach((id) => assert.strictEqual(h.byId[id].value, '', id + ' is emptied'));
   assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).info, undefined);
 });

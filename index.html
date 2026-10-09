@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Valen quiz participant page (v3): landing, info, quiz, saving, ticket and staff redeem.
+  Valen Lucky Quiz participant page (v3): info, concern choice, quiz, saving, and the final screen with the ticket and staff redeem.
   How to open: run  py -m http.server 8765 --directory "<this folder>"  and browse to http://localhost:8765/?demo=1
   (?demo=1 runs without the API: nothing is sent or saved on the server).
   Logic lives in quiz-core.js; the build id, API address and fallback content live in defaults.js.
@@ -10,191 +10,157 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light">
 <meta name="robots" content="noindex">
-<title>Valen 행운퀴즈</title>
+<title>Valen Lucky Quiz</title>
 <!-- Pretendard is optional: it loads without blocking and the page renders fully with the system font. -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.css" media="print" onload="this.media='all'">
 <style>
-  :root {
-    --page: #2b2b2b; --text: #f2f2f2; --muted: #9a9a9a;
-    --surface: #1e1e1e; --surface-2: #161616; --line: #3a3a3a; --line-2: #444;
-    --accent: #00a96b; --on-accent: #111; --cta: #ffffff; --on-cta: #111; --danger: #ff8a80;
-    --radius: 16px;
-  }
+  :root { --page: #ffffff; --text: #0f1b4d; --muted: #4a5578; --surface: #f3f6fd; --line: #cfd9f0; --line-2: #9fb0d9;
+    --accent: #2b4586; --on-accent: #ffffff; --cta: #12235f; --on-cta: #ffffff; --danger: #b3261e; --radius: 16px; }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  html, body { margin: 0; background: var(--page); color: var(--text); }
+  html, body { margin: 0; color: var(--text); }
   body {
+    background: var(--page); min-height: 100vh; min-height: 100dvh;
     font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
-    -webkit-font-smoothing: antialiased; line-height: 1.5;
-    padding-bottom: env(safe-area-inset-bottom);
+    -webkit-font-smoothing: antialiased; line-height: 1.5; padding-bottom: env(safe-area-inset-bottom);
+    word-break: keep-all; overflow-wrap: anywhere;
   }
+  /* The final screen is a full-page gradient from the team's design. */
+  body.done { background: linear-gradient(180deg, #ffffff 0%, #ffffff 35%, #aac2f6 58%, #6790e6 78%, #2b4586 100%); }
   button, input { font: inherit; }
   input { font-size: 16px; }
-  :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   [tabindex="-1"]:focus { outline: none; }
-  .band { height: 56px; display: flex; align-items: center; padding: 0 20px;
-    background: linear-gradient(90deg, #2563eb 0%, #6f95f2 55%, #ffffff 100%); }
-  .band b { color: #fff; font-weight: 800; font-size: 20px; letter-spacing: .5px; }
-  .badges { margin-left: auto; display: flex; gap: 6px; }
-  .draft { font-size: 11px; color: #1d3a8a; background: rgba(255,255,255,.85); border-radius: 99px; padding: 2px 8px; }
-  .draft.demo { background: var(--accent); color: var(--on-accent); font-weight: 700; }
-  main { max-width: 480px; margin: 0 auto; padding: 24px 20px 40px; }
-  h1 { font-size: 34px; line-height: 1.2; margin: 28px 0 10px; text-align: center; letter-spacing: -0.5px; }
-  h2 { font-size: 22px; line-height: 1.35; margin: 8px 0 16px; letter-spacing: -0.3px; white-space: pre-line; }
-  .sub { text-align: center; color: var(--text); font-size: 18px; margin: 0 0 24px; }
-  .steps { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 24px; }
-  .steps h2 { margin: 0 0 8px; color: var(--muted); font-size: 13px; font-weight: 400; letter-spacing: 0; }
-  .steps ol { margin: 0; padding-left: 20px; font-size: 15px; }
-  .steps li { margin: 6px 0; }
+  main { max-width: 480px; margin: 0 auto; padding: 28px 22px 40px; }
+  .demo-badge { position: fixed; top: 8px; right: 8px; z-index: 5; padding: 2px 10px; border-radius: 99px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 700; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 8px 0 18px; text-align: center; letter-spacing: -0.5px; }
+  h2 { font-size: 21px; line-height: 1.4; margin: 8px 0 14px; letter-spacing: -0.3px; white-space: pre-line; }
+  .sub { color: var(--muted); font-size: 15px; margin: -8px 0 16px; }
   .cta { display: block; width: 100%; min-height: 54px; border: 0; border-radius: 99px; background: var(--cta); color: var(--on-cta); font-weight: 700; font-size: 17px; cursor: pointer; }
-  .cta[disabled] { background: #555; color: #bbb; cursor: default; }
-  .note { color: var(--muted); font-size: 13px; text-align: center; margin-top: 14px; }
+  .cta[disabled] { background: #c9d2ea; color: #4a5578; cursor: default; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 14px; }
   .msg-card { background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 22px 20px; }
   .msg-card p, .msg-card h2 { margin: 0; font-size: 16px; font-weight: 400; letter-spacing: 0; }
-  .alert { background: #3a1f1f; border: 1px solid #7a3b3b; color: var(--danger); border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; font-size: 14px; }
-  .card-skip { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 16px; margin-bottom: 18px; cursor: pointer; }
-  .card-skip.on { border-color: var(--accent); }
-  .card-skip input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
-  .card-skip strong { display: block; font-size: 16px; } .card-skip span { color: var(--muted); font-size: 13px; }
-  .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 6px 0 14px; }
-  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-  label.field { display: block; margin-bottom: 14px; font-size: 14px; color: var(--muted); }
-  label.field input { display: block; width: 100%; margin-top: 6px; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); }
+  .alert { background: #fdecea; border: 1px solid #e8a39d; color: #8c1d18; border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; font-size: 14px; }
+  label.field { display: block; margin-bottom: 14px; font-size: 14px; font-weight: 600; }
+  label.field input { display: block; width: 100%; margin-top: 6px; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: #fff; color: var(--text); font-weight: 400; }
   .req { color: var(--danger); }
   .consent { margin: 8px 0 20px; font-size: 14px; }
-  .consent label { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
-  .consent input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+  .consent > label, .concern label { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
+  .consent input, .concern input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
   .consent details { color: var(--muted); font-size: 13px; margin: 0 0 6px 30px; }
+  .consent summary { cursor: pointer; }
   .consent details p { margin: 6px 0; white-space: pre-line; }
-  .consent a { color: var(--text); }
-  .progress { display: flex; gap: 6px; margin: 4px 0 8px; }
-  .progress i { flex: 1; height: 4px; border-radius: 4px; background: var(--line); }
-  .progress i.on { background: var(--accent); }
-  .count { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
-  .eyebrow { color: var(--muted); font-size: 14px; margin-top: 10px; }
-  .hint { margin: -4px 0 16px; font-size: 15px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
-  .hint b { display: inline-block; margin-right: 8px; padding: 1px 10px; border-radius: 99px; background: var(--accent); color: var(--on-accent); font-size: 13px; }
+  .concern label { padding: 14px 16px; border: 1px solid var(--line-2); border-radius: 14px; background: #fff; font-size: 16px; cursor: pointer; }
+  .concern .picked { border-color: var(--accent); background: var(--surface); }
+  .concern-hint { margin: 14px 0; padding: 12px 14px; border-radius: 12px; background: var(--surface); font-size: 15px; font-weight: 600; }
+  .count { color: var(--muted); font-size: 13px; text-align: center; }
+  .hint { margin: 0 0 16px; font-size: 15px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  .hint b { margin-right: 6px; }
   .options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
-  .opt { text-align: left; padding: 15px 16px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface); color: var(--text); font-size: 16px; cursor: pointer; }
-  .opt.sel { border-color: var(--text); outline: 2px solid var(--text); }
+  .opt { text-align: left; padding: 15px 16px; border-radius: 14px; border: 1px solid var(--line-2); background: #fff; color: var(--text); font-size: 16px; cursor: pointer; }
+  .opt.sel { border-color: var(--accent); outline: 2px solid var(--accent); }
   .opt[disabled], .abcard[disabled] { cursor: default; }
   .ab { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
-  .abcard { border: 2px solid var(--line-2); border-radius: 14px; background: var(--surface-2); padding: 8px; cursor: pointer; text-align: center; color: var(--text); }
-  .abcard.sel { border-color: var(--text); }
-  .abimg { aspect-ratio: 4/5; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; background: #333; color: #fff; overflow: hidden; padding: 6px; }
+  .abcard { border: 2px solid var(--line-2); border-radius: 14px; background: #fff; padding: 8px; cursor: pointer; text-align: center; color: var(--text); }
+  .abcard.sel { border-color: var(--accent); }
+  .abimg { aspect-ratio: 4/5; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; background: var(--surface); overflow: hidden; padding: 6px; }
   .abimg img { width: 100%; height: 100%; object-fit: contain; }
-  .badge { display: inline-block; margin-top: 8px; padding: 3px 14px; border-radius: 99px; background: #333; font-weight: 700; font-size: 14px; }
+  .badge { display: inline-block; margin-top: 8px; padding: 3px 14px; border-radius: 99px; background: var(--surface); font-weight: 700; font-size: 14px; }
   .cap { display: block; font-size: 13px; color: var(--muted); margin-top: 6px; }
-  .explain { background: #111; border-radius: 14px; padding: 16px; margin-bottom: 18px; font-size: 15px; }
-  .explain b { display: block; font-size: 17px; margin-bottom: 6px; }
-  .explain .correct { margin-bottom: 8px; }
-  #q-explain { white-space: pre-line; }
+  .explain { background: var(--surface); border-radius: 14px; padding: 16px; margin-bottom: 18px; font-size: 15px; white-space: pre-line; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .text-answer { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); margin-bottom: 14px; }
+  .text-answer { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: #fff; color: var(--text); margin-bottom: 14px; }
   .center { text-align: center; }
-  .spinner { width: 44px; height: 44px; margin: 40px auto 18px; border-radius: 50%; border: 4px solid var(--line-2); border-top-color: var(--text); }
+  .spinner { width: 44px; height: 44px; margin: 40px auto 18px; border-radius: 50%; border: 4px solid var(--line); border-top-color: var(--accent); }
   @media (prefers-reduced-motion: no-preference) {
     .spinner { animation: spin 1s linear infinite; }
     .page { animation: in .25s ease-out; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   }
-  /* Ticket: slice F4 restyles only the inside of #ticket-slot; the staff panel sits outside it. */
-  .ticket { margin-top: 12px; border-radius: 22px; padding: 26px 22px; text-align: center; color: #111;
-    background: radial-gradient(circle at 15% 10%, #ffffff 0%, #e8f0ff 45%, #c9dafd 100%); }
-  .ticket h2 { font-size: 26px; font-weight: 800; margin: 6px 0 14px; }
-  .ticket .no { font-size: 48px; font-weight: 800; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
-  .ticket .msg { font-size: 16px; font-weight: 700; margin-top: 12px; } .ticket .time { font-size: 13px; color: #444; margin-top: 8px; }
-  .ticket .clock { font-size: 16px; font-weight: 700; margin-top: 12px; font-variant-numeric: tabular-nums; color: #222; }
-  .ticket .foot { font-size: 12px; color: #444; margin: 12px 0 0; }
-  .ticket .demo-mark { display: inline-block; margin-bottom: 6px; padding: 3px 12px; border-radius: 99px; background: #111; color: #fff; font-size: 13px; font-weight: 700; }
-  .ticket.used { filter: grayscale(1); opacity: .7; }
-  .link { background: none; border: 0; color: #1d3a8a; text-decoration: underline; font-size: 14px; cursor: pointer; padding: 8px; }
-  .staff { margin-top: 22px; }
-  .cta.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--line-2); }
+  /* Final screen: the whole slot is the team's "participation complete" design (navy text on the blue gradient). */
+  .ticket { display: flex; flex-direction: column; align-items: center; text-align: center; color: #0b1c5c; padding-top: 6vh; }
+  .ticket .pill { padding: 10px 40px; border: 1.5px solid #0b1c5c; border-radius: 99px; font-size: 20px; font-weight: 800; }
+  .ticket .gift { width: 72%; max-width: 330px; height: auto; margin: 4vh 0 2vh; }
+  .ticket h2 { font-size: 24px; font-weight: 800; margin: 12px 0 10px; }
+  .ticket .show { font-size: 20px; line-height: 1.5; margin: 0 0 18px; }
+  /* The ticket facts sit on a near-white card so their contrast does not depend on where the gradient is. */
+  .ticket .tbox { width: 100%; max-width: 320px; padding: 12px 16px; border-radius: var(--radius); background: rgba(255, 255, 255, .9); }
+  .ticket .no { font-size: 40px; font-weight: 800; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+  .ticket .msg { font-size: 16px; font-weight: 700; margin-top: 8px; }
+  .ticket .time { font-size: 14px; font-weight: 600; margin-top: 6px; }
+  .ticket .clock { font-size: 16px; font-weight: 700; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  .ticket .foot { font-size: 13px; font-weight: 600; margin: 10px 0 0; }
+  .ticket .logo { width: 150px; height: auto; margin: 7vh 0 8px; }
+  .ticket .demo-mark { padding: 3px 12px; border-radius: 99px; background: #0b1c5c; color: #fff; font-size: 13px; font-weight: 700; }
+  .ticket.used .gift, .ticket.used .no { filter: grayscale(1); opacity: .55; }
+  .link { background: none; border: 0; color: #0b1c5c; text-decoration: underline; font-size: 14px; font-weight: 700; cursor: pointer; padding: 8px; }
+  .staff { margin-top: 18px; padding: 14px; border-radius: var(--radius); background: #2b4586; color: #fff; }
+  .staff .cta.secondary { background: transparent; color: #fff; border: 1.5px solid #fff; }
+  .staff .cta:not(.secondary) { background: #fff; color: #12235f; }
   #staff-panel { margin-top: 14px; }
+  .staff label.field { color: #fff; }
   .staff-result { margin-top: 12px; min-height: 1.5em; font-weight: 700; }
-  .staff-result.ok { color: var(--accent); } .staff-result.bad { color: var(--danger); }
+  .staff-result.ok { color: #a8f0c6; } .staff-result.bad { color: #ffd0cc; }
 </style>
 </head>
 <body>
-<div class="band"><b>VALEN</b><span class="badges"><span class="draft demo" id="demo-badge" hidden>미리보기</span><span class="draft">시안 v1</span></span></div>
+<span class="demo-badge" id="demo-badge" hidden>미리보기</span>
 <main>
   <!-- Shown when a script fails to load or the page throws. Never leave a blank screen. -->
   <section class="msg-card" id="boot-card" data-testid="boot-card" role="alert" hidden>
     <p>잠시 후 새로고침해 주세요. 계속 안 되면 부스 스태프에게 말씀해 주세요.</p>
   </section>
-  <!-- 1. Landing -->
-  <section class="page" id="p-landing">
-    <h1 data-testid="landing-title">Valen 행운퀴즈</h1>
-    <p class="sub">힌트 보면 다 맞혀요. 1분이면 경품까지</p>
-    <div class="steps">
-      <h2>참여 방법</h2>
-      <ol>
-        <li>명함을 명함함에 넣어 주세요 (명함이 없으면 다음 화면에서 정보를 입력해요)</li>
-        <li>행운퀴즈를 풀어요</li>
-        <li>응모권을 받아 행운의 룰렛을 돌려요</li>
-        <li>기프트백을 받아 가세요</li>
-      </ol>
-    </div>
-    <button type="button" class="cta" id="landing-start" data-testid="landing-start">시작하기</button>
-    <p class="note">참여 정보는 행사 운영 목적으로만 사용돼요.</p>
-  </section>
-  <!-- 2. Info (card path = one checkbox; otherwise name, phone and consent) -->
+  <!-- 1. Info: the first screen. All four fields are asked on the page; the server needs only name and phone. -->
   <section class="page" id="p-info" hidden>
-    <h2>참여 정보를 알려주세요</h2>
+    <h1>Valen Lucky Quiz</h1>
     <form id="info-form" novalidate>
-      <label class="card-skip" id="card-skip-box">
-        <input type="checkbox" id="card-skip" data-testid="card-skip">
-        <div><strong>명함을 명함함에 넣었어요</strong><span>체크하면 정보 입력 없이 퀴즈를 풀 수 있어요.</span></div>
-      </label>
       <div class="alert" id="info-error" data-testid="info-error" role="alert" hidden></div>
-      <div id="info-fields">
-        <div class="divider">명함이 없다면 직접 입력</div>
-        <label class="field">이름<span class="req" aria-hidden="true"> *</span><input id="field-name" data-testid="field-name" autocomplete="name" maxlength="40" required></label>
-        <label class="field">소속<input id="field-org" data-testid="field-org" autocomplete="organization" maxlength="80"></label>
-        <label class="field">휴대폰 번호<span class="req" aria-hidden="true"> *</span><input id="field-phone" data-testid="field-phone" type="tel" inputmode="numeric" placeholder="010-1234-5678" autocomplete="tel" maxlength="20" required></label>
-        <label class="field">이메일<input id="field-email" data-testid="field-email" type="email" inputmode="email" autocomplete="email" maxlength="254"></label>
-        <div class="consent">
-          <label><input type="checkbox" id="consent-required" data-testid="consent-required"> [필수] 개인정보 수집·이용 동의</label>
-          <details><summary>자세히</summary>
-            <p id="consent-items"></p>
-            <p id="consent-detail"></p>
-            <a id="consent-link" target="_blank" rel="noopener noreferrer" hidden>개인정보 처리방침 전문 보기</a>
-          </details>
-          <div id="marketing-box">
-            <label><input type="checkbox" id="consent-marketing" data-testid="consent-marketing"> [선택] 마케팅 정보 수신 동의</label>
-            <details><summary>자세히</summary><p id="consent-marketing-detail"></p></details>
-          </div>
-        </div>
+      <label class="field">이름<span class="req" aria-hidden="true"> *</span><input id="field-name" data-testid="field-name" autocomplete="name" maxlength="40" required></label>
+      <label class="field">이메일<span class="req" aria-hidden="true"> *</span><input id="field-email" data-testid="field-email" type="email" inputmode="email" autocomplete="email" maxlength="254" required></label>
+      <label class="field">연락처<span class="req" aria-hidden="true"> *</span><input id="field-phone" data-testid="field-phone" type="tel" inputmode="numeric" placeholder="010-1234-5678" autocomplete="tel" maxlength="20" required></label>
+      <label class="field">소속 (회사명·직책)<span class="req" aria-hidden="true"> *</span><input id="field-org" data-testid="field-org" autocomplete="organization" maxlength="80" required></label>
+      <div class="consent">
+        <label><input type="checkbox" id="consent-required" data-testid="consent-required"> (필수) 개인정보 수집·이용에 동의합니다</label>
+        <details><summary>펼쳐보기</summary><p id="consent-detail"></p></details>
       </div>
-      <button type="submit" class="cta" id="info-next" data-testid="info-next">퀴즈 풀기</button>
+      <button type="submit" class="cta" id="info-next" data-testid="info-next">다음으로</button>
+      <p class="note">입력해주신 정보는 명함 응모와 동일하게 처리됩니다. 이벤트 참여 및 경품 추첨에 활용됩니다.</p>
     </form>
   </section>
-  <!-- 3. Quiz (one question at a time; the question comes from the Sheet or from defaults.js) -->
+  <!-- 2. Concern choice (several may be picked); the selection travels as the answer "concern". -->
+  <section class="page concern" id="p-concern" hidden>
+    <h1>Valen Lucky Quiz</h1>
+    <h2>지금 가장 가까운 상황을 선택해주세요.</h2>
+    <p class="sub">(중복체크 가능)</p>
+    <label><input type="checkbox" data-testid="concern-option" value="신제품을 기획 중이다"> 신제품을 기획 중이다</label>
+    <label><input type="checkbox" data-testid="concern-option" value="해외 진출을 준비 중이다"> 해외 진출을 준비 중이다</label>
+    <label><input type="checkbox" data-testid="concern-option" value="광고 효율 개선이 필요하다"> 광고 효율 개선이 필요하다</label>
+    <label><input type="checkbox" data-testid="concern-option" value="크리에이터 협업을 검토 중이다"> 크리에이터 협업을 검토 중이다</label>
+    <label><input type="checkbox" data-testid="concern-option" value="해당하지 않지만, 발렌을 알고 싶다"> 해당하지 않지만, 발렌을 알고 싶다</label>
+    <p class="concern-hint" id="concern-hint" role="status" hidden>오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다</p>
+    <button type="button" class="cta" id="concern-next" data-testid="concern-next" disabled>다음으로</button>
+  </section>
+  <!-- 3. Quiz (the question comes from the Sheet or from defaults.js) -->
   <section class="page" id="p-quiz" hidden>
-    <div class="progress" id="progress" hidden></div>
+    <h1>Valen Lucky Quiz</h1>
     <div class="count" id="q-count" hidden></div>
-    <div class="eyebrow">행운퀴즈</div>
     <h2 id="q-title" data-testid="q-title"></h2>
-    <p class="hint" id="q-hint" data-testid="q-hint"><b>힌트</b><span id="q-hint-text"></span></p>
+    <p class="hint" id="q-hint" data-testid="q-hint"><b>힌트 :</b> <span id="q-hint-text"></span></p>
     <div class="options" id="q-choice" hidden></div>
     <div class="ab" id="q-ab" hidden></div>
     <form id="q-text" novalidate hidden>
       <input class="text-answer" id="q-answer" data-testid="q-answer" placeholder="정답을 입력해 주세요" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="정답">
       <button type="submit" class="cta" id="q-confirm" disabled>확인</button>
     </form>
-    <div class="explain" id="q-feedback" role="status" hidden>
-      <b id="q-head"></b>
-      <div class="correct" id="q-correct" hidden></div>
-      <div id="q-explain" hidden></div>
-    </div>
-    <button type="button" class="cta" id="q-next" data-testid="q-next" hidden>다음</button>
+    <div class="explain" id="q-feedback" role="status" hidden></div>
+    <button type="button" class="cta" id="q-next" data-testid="q-next" hidden>참여 완료</button>
   </section>
   <!-- Waiting for config (at most 5 s, then the embedded question is used) -->
-  <section class="page" id="p-wait" hidden><h2 class="sr-only">행운퀴즈</h2><div class="spinner"></div></section>
+  <section class="page" id="p-wait" hidden><h2 class="sr-only">Valen Lucky Quiz</h2><div class="spinner"></div></section>
   <!-- 4. Saving -->
   <section class="page center" id="p-saving" data-testid="saving-root" hidden>
     <div class="spinner" id="saving-spinner"></div>
@@ -205,11 +171,15 @@
   <section class="page" id="p-error" data-testid="error-card" data-error-code="" hidden>
     <div class="msg-card" role="alert"><h2 id="error-text"></h2></div>
   </section>
-  <!-- 5. Ticket and staff redeem. The ticket slot is the only part the ticket design (F4) may restyle. -->
+  <!-- 5. Final screen: "participation complete" with the numbered ticket, then the staff redeem panel. -->
   <section class="page" id="p-ticket" hidden>
     <div class="ticket" id="ticket-slot" data-testid="ticket-root">
+      <div class="pill">Lucky Quiz</div>
+      <img class="gift" src="assets/gift.webp" alt="" width="900" height="780">
+      <h2>참여해주셔서 감사합니다</h2>
+      <p class="show">담당자에게<br>이 화면을 보여주세요</p>
+      <div class="tbox">
       <div class="demo-mark" id="ticket-demo" hidden></div>
-      <h2>행운의 룰렛 응모권</h2>
       <div class="no" id="ticket-no" data-testid="ticket-no"></div>
       <div class="time" id="ticket-issued" data-testid="ticket-issued"></div>
       <div class="msg" id="ticket-status" data-testid="ticket-status" role="status"></div>
@@ -217,6 +187,8 @@
       <div class="time" id="ticket-note"></div>
       <div class="clock" id="ticket-clock" data-testid="ticket-clock"></div>
       <p class="foot">응모권은 1인 1회만 사용할 수 있어요.</p>
+      </div>
+      <img class="logo" src="assets/valen-logo.webp" alt="valen" width="400" height="150">
     </div>
     <div class="staff">
       <button type="button" class="cta secondary" id="staff-toggle" data-testid="staff-toggle" aria-expanded="false" aria-controls="staff-panel">스태프 확인</button>
@@ -228,8 +200,8 @@
     </div>
   </section>
 </main>
-<script src="defaults.js?v=2026-10-08.1"></script>
-<script src="quiz-core.js?v=2026-10-08.1"></script>
+<script src="defaults.js?v=2026-10-09.1"></script>
+<script src="quiz-core.js?v=2026-10-09.1"></script>
 <script>
 // Safety net, registered before the app script so even a syntax error in it ends in a message, not a blank page.
 (function () {
@@ -263,7 +235,9 @@
   var T0 = Date.now();
   var CONFIG_WAIT_MS = 5000;   // the quiz waits at most this long for config, then uses the embedded question
   var IMAGE_WAIT_MS = 8000;    // an A/B image that has not loaded by now becomes a caption box
-  var PAGES = ['p-landing', 'p-info', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'];
+  var PAGES = ['p-info', 'p-concern', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'];
+  // The concern choice is the first "question": it is stored and sent like any answer (id "concern", labels joined by " | ").
+  var CONCERN_Q = { id: 'concern', type: 'concern' };
 
   var demo = /[?&]demo=1(?:&|$)/.test(window.location.search);
   // ?demo=1 never calls the quiz API (the Pretendard font may still load from jsdelivr) (in-memory demo api for config and tickets) and never touches the real
@@ -310,11 +284,17 @@
   }
   function persist() { Q.saveState(storage, state, Date.now, SO); }
   function effective() { return Q.effectiveContent(cfg.data, D.embedded); }
+  // The content the quiz runs on: the concern step first, then the questions from the Sheet (or the embedded one).
+  function loadContent() {
+    var c = effective();
+    content = Object.assign({}, c, { questions: [CONCERN_Q].concat(c.questions) });
+  }
   function configEventId() { return cfg.status === 'done' && cfg.data ? cfg.data.eventId : ''; }
 
   function show(id) {
     current = id;
     if (id !== 'p-ticket') { stopClock(); }
+    document.body.classList.toggle('done', id === 'p-ticket');
     PAGES.forEach(function (p) { $(p).hidden = p !== id; });
     window.scrollTo(0, 0);
     var h = $(id).querySelector('h1, h2');
@@ -346,6 +326,7 @@
   }
   function onConfig(res) {
     if (res.ok) {
+      if (demo) { res.data.consent = D.embedded.consent; } // the in-memory demo api has only a placeholder text
       cfg = { status: 'done', data: res.data };
     } else {
       cfg = { status: 'fallback', data: null };
@@ -355,14 +336,14 @@
       var r = Q.resetForEvent(storage, state, cfg.data.eventId, SO);
       if (r.reset) {
         startOver(r.state);
-        if (current !== 'p-wait') { show('p-landing'); }
+        if (current !== 'p-wait') { showStart(); }
       }
     }
     flushWait();
     if (current === 'p-info') { renderConsent(); }
   }
   function whenContent(cb) {
-    if (cfg.status !== 'pending' || Date.now() - T0 >= CONFIG_WAIT_MS) { content = effective(); cb(); return; }
+    if (cfg.status !== 'pending' || Date.now() - T0 >= CONFIG_WAIT_MS) { loadContent(); cb(); return; }
     waiter = cb;
     show('p-wait');
     setTimeout(flushWait, Math.max(0, CONFIG_WAIT_MS - (Date.now() - T0)));
@@ -371,7 +352,7 @@
     if (!waiter) { return; }
     var cb = waiter;
     waiter = null;
-    content = effective();
+    loadContent();
     cb();
   }
   function enter(r) {
@@ -379,7 +360,12 @@
     else if (r.route === 'saving') { startSaving(!!r.resend); }
     else if (r.route === 'quiz') { renderQuestion(r.qIndex | 0); }
     else if (r.route === 'info') { renderInfo(''); }
-    else { show('p-landing'); }
+    else { showStart(); }
+  }
+  // The first screen is the info form; a fresh state is made when nothing usable is stored.
+  function showStart() {
+    if (!state) { state = Q.freshState(configEventId()); }
+    renderInfo('');
   }
   // Boot and every "what comes next" decision. Routes that need the questions wait for config first.
   function route() {
@@ -389,54 +375,30 @@
     else { enter(r); }
   }
 
-  // ------------------------------------------------------------------ landing and info
-  $('landing-start').onclick = function () {
-    state = Q.freshState(configEventId());
-    state.stage = 'info';
-    persist();
-    renderInfo('');
-  };
-
+  // ------------------------------------------------------------------ info
   function showInfoError(code, field, quiet) {
     infoErrorCode = code;
     $('info-error').textContent = Q.errorCopy(code);
     $('info-error').setAttribute('data-error-code', code);
     $('info-error').hidden = false;
-    var ids = { name: 'field-name', phone: 'field-phone', organization: 'field-org', email: 'field-email', consent: 'consent-required', card: 'card-skip' };
-    // No consent text: the way forward is the card checkbox, not the consent box.
-    var target = code === 'CONSENT_TEXT_MISSING' ? 'card' : field;
-    if (!quiet && ids[target]) { $(ids[target]).focus(); }
+    var ids = { name: 'field-name', phone: 'field-phone', organization: 'field-org', email: 'field-email', consent: 'consent-required' };
+    if (!quiet && ids[field]) { $(ids[field]).focus(); }
   }
   function hideInfoError() { infoErrorCode = ''; $('info-error').hidden = true; }
   // Errors that come back from the server name a field only through their code.
   var FIELD_OF_CODE = { REQUIRED_FIELDS: 'name', INVALID_PHONE: 'phone', INVALID_EMAIL: 'email', CONSENT_REQUIRED: 'consent', CONSENT_TEXT_MISSING: 'consent' };
 
-  // The info path is blocked while there is no consent text; the card path still works.
-  function updateGate() {
-    var blocked = !$('card-skip').checked && !effective().infoPathReady;
-    if (blocked) { showInfoError('CONSENT_TEXT_MISSING', '', true); }
-    else if (infoErrorCode === 'CONSENT_TEXT_MISSING') { hideInfoError(); }
-  }
-  function syncCard() {
-    var card = $('card-skip').checked;
-    $('card-skip-box').classList.toggle('on', card);
-    $('info-fields').hidden = card;
-    updateGate();
-  }
   // Version of the consent text on screen. If the text changes after the box was ticked, the tick is withdrawn.
   var shownConsentVersion = '';
   function renderConsent() {
     var c = effective().consent || {};
     var v = c.version || '';
-    if (shownConsentVersion && v !== shownConsentVersion) { $('consent-required').checked = false; $('consent-marketing').checked = false; }
+    if (shownConsentVersion && v !== shownConsentVersion) { $('consent-required').checked = false; }
     shownConsentVersion = v;
-    $('consent-items').textContent = c.collectedItems || D.embedded.consent.collectedItems;
     $('consent-detail').textContent = c.requiredDetail || '';
-    var url = c.privacyNoticeUrl || '';
-    if (/^https:\/\//.test(url)) { $('consent-link').href = url; $('consent-link').hidden = false; } else { $('consent-link').hidden = true; }
-    $('marketing-box').hidden = blank(c.marketingDetail);
-    $('consent-marketing-detail').textContent = c.marketingDetail || '';
-    updateGate();
+    // No usable consent text: say so at once (the person cannot go on) instead of after the tap.
+    if (!effective().infoPathReady) { showInfoError('CONSENT_TEXT_MISSING', '', true); }
+    else if (infoErrorCode === 'CONSENT_TEXT_MISSING') { hideInfoError(); }
   }
   function renderInfo(errorCode) {
     var info = state.info || {};
@@ -445,75 +407,74 @@
     $('field-org').value = info.organization || '';
     $('field-phone').value = info.phone || '';
     $('field-email').value = info.email || '';
-    $('card-skip').checked = state.entryType === 'card';
     state.stage = 'info'; // routeOnLoad sends stage "info" back here after a reload
     persist();
     hideInfoError();
     show('p-info');
     renderConsent();
-    var sameText = consent.version === shownConsentVersion; // a stored tick counts only for the text it was given on
-    $('consent-required').checked = consent.required === true && sameText;
-    $('consent-marketing').checked = consent.marketing === true && sameText;
-    syncCard();
+    $('consent-required').checked = consent.required === true && consent.version === shownConsentVersion; // a tick counts only for the text it was given on
     if (errorCode) { showInfoError(errorCode, FIELD_OF_CODE[errorCode] || '', false); }
   }
-  $('card-skip').addEventListener('change', syncCard);
   $('info-form').addEventListener('input', function () {
     if (infoErrorCode && infoErrorCode !== 'CONSENT_TEXT_MISSING') { hideInfoError(); }
   });
   $('info-form').addEventListener('submit', function (ev) {
     ev.preventDefault();
-    if ($('card-skip').checked) {
-      state.entryType = 'card';
-      delete state.info; // nothing personal is kept on the card path
-      delete state.consent;
-    } else {
-      var eff = effective();
-      var info = { name: $('field-name').value.trim(), organization: $('field-org').value.trim(), phone: $('field-phone').value.trim(), email: $('field-email').value.trim() };
-      var consent = {
-        required: $('consent-required').checked,
-        marketing: $('consent-marketing').checked && !$('marketing-box').hidden,
-        version: shownConsentVersion
-      };
-      var v = Q.validateInfo('info', info, consent, eff.infoPathReady);
-      if (!v.ok) { showInfoError(v.code, v.field, false); return; }
-      state.entryType = 'info';
-      state.info = info;
-      state.consent = consent;
-    }
+    var info = { name: $('field-name').value.trim(), organization: $('field-org').value.trim(), phone: $('field-phone').value.trim(), email: $('field-email').value.trim() };
+    var consent = { required: $('consent-required').checked, marketing: false, version: shownConsentVersion };
+    var v = Q.validateInfo('info', info, consent, effective().infoPathReady);
+    if (!v.ok) { showInfoError(v.code, v.field, false); return; }
+    // The team asks for all four fields (the server needs only name and phone): the browser names the empty one.
+    var empty = info.email === '' ? $('field-email') : (info.organization === '' ? $('field-org') : null);
+    if (empty) { if (typeof empty.reportValidity === 'function') { empty.reportValidity(); } empty.focus(); return; }
+    state.entryType = 'info';
+    state.info = info;
+    state.consent = consent;
     state.stage = 'quiz';
     persist();
     route();
   });
 
   // ------------------------------------------------------------------ quiz
-  function correctText(q) {
-    if (q.type === 'text') { return (q.accepted && q.accepted.length) ? String(q.accepted[0]) : ''; }
-    return String(q.correct);
+  var concernBoxes = Array.prototype.slice.call($('p-concern').querySelectorAll('input'));
+  // Picked labels live in state.answers.concern, so a reload keeps them and the submit body carries them.
+  function syncConcern() {
+    var picked = [];
+    concernBoxes.forEach(function (b) { b.parentNode.classList.toggle('picked', b.checked); if (b.checked) { picked.push(b.value); } });
+    if (picked.length) { state.answers.concern = picked.join(' | '); } else { delete state.answers.concern; }
+    persist();
+    $('concern-hint').hidden = !picked.length;
+    $('concern-next').disabled = !picked.length;
   }
+  concernBoxes.forEach(function (b) { b.addEventListener('change', syncConcern); });
+  function renderConcern(i) {
+    state.stage = 'quiz';
+    state.qIndex = i;
+    var picked = blank(state.answers.concern) ? [] : state.answers.concern.split(' | ');
+    concernBoxes.forEach(function (b) { b.checked = picked.indexOf(b.value) !== -1; });
+    show('p-concern');
+    syncConcern();
+  }
+  $('concern-next').onclick = function () { renderQuestion((state.qIndex | 0) + 1); };
   function renderQuestion(i) {
     var qs = content.questions;
     var q = qs[i];
+    if (q.type === 'concern') { renderConcern(i); return; }
     locked = false;
     state.stage = 'quiz';
     state.qIndex = i;
     persist();
     show('p-quiz');
-    var many = qs.length > 1;
-    $('progress').hidden = !many;
-    $('q-count').hidden = !many;
-    if (many) {
-      $('progress').innerHTML = '';
-      qs.forEach(function (_, k) { var b = document.createElement('i'); if (k <= i) { b.className = 'on'; } $('progress').appendChild(b); });
-      $('q-count').textContent = (i + 1) + ' / ' + qs.length;
-    }
+    var real = qs.length - 1; // the concern step does not count
+    $('q-count').hidden = real < 2;
+    $('q-count').textContent = i + ' / ' + real;
     $('q-title').textContent = q.title;
     $('q-hint').hidden = blank(q.hint);
     $('q-hint-text').textContent = q.hint || '';
     $('q-feedback').hidden = true;
     $('q-next').hidden = true;
     $('q-next').disabled = false;
-    $('q-next').textContent = i === qs.length - 1 ? '응모권 받기' : '다음';
+    $('q-next').textContent = i === qs.length - 1 ? '참여 완료' : '다음으로';
     $('q-choice').hidden = true; $('q-ab').hidden = true; $('q-text').hidden = true;
     if (q.type === 'choice') { buildChoice(q, i); }
     else if (q.type === 'ab') { buildAb(q, i); }
@@ -534,7 +495,7 @@
       $('q-answer').readOnly = true;
       $('q-confirm').hidden = true;
     }
-    showFeedback(q, value);
+    showFeedback(q);
   }
   function buildChoice(q, i) {
     var box = $('q-choice');
@@ -613,16 +574,12 @@
     locked = true;
     state.answers[q.id] = value;
     persist();
-    showFeedback(q, value);
+    showFeedback(q);
   }
-  function showFeedback(q, value) {
-    var g = Q.gradeForDisplay(q, value);
-    $('q-head').textContent = g === true ? '정답이에요!' : (g === false ? '아쉬워요!' : '좋아요!');
-    $('q-correct').hidden = g !== false;
-    $('q-correct').textContent = g === false ? '정답: ' + correctText(q) : '';
-    $('q-explain').hidden = blank(q.explanation);
-    $('q-explain').textContent = q.explanation || '';
-    $('q-feedback').hidden = false;
+  // After an answer only the explanation shows (no right/wrong line; grading is recorded on the server).
+  function showFeedback(q) {
+    $('q-feedback').textContent = q.explanation || '';
+    $('q-feedback').hidden = blank(q.explanation);
     $('q-next').hidden = false;
     $('q-next').focus();
   }
@@ -646,7 +603,7 @@
   function startSaving(resend) {
     if (api.busy('submit')) { return; } // a second tap must not replace the body of the request in flight
     var body;
-    if (!resend && state.entryType !== 'card' && state.entryType !== 'info') { // buildSubmitBody refuses anything else
+    if (!resend && state.entryType !== 'info') { // buildSubmitBody refuses anything else
       state.stage = 'info';
       persist();
       renderInfo('');
@@ -657,7 +614,7 @@
     if (resend && state.pending && state.pending.body) {
       body = state.pending.body;
     } else {
-      if (!content) { content = effective(); }
+      if (!content) { loadContent(); }
       if (!state.eventId) { state.eventId = configEventId(); }
       body = Q.buildSubmitBody(state, content, deviceId, Q.newId(), D.build);
     }
@@ -700,7 +657,7 @@
     if (r.code === 'EVENT_CHANGED') { // the ticket belongs to an earlier event: it was not stored; start over on the landing
       try { if (storage) { storage.removeItem(Q.storageKeys(SO).state); } } catch (e) { /* storage blocked: nothing stored */ }
       startOver(Q.freshState(configEventId()));
-      show('p-landing');
+      showStart();
       return;
     }
     if (r.ok) {

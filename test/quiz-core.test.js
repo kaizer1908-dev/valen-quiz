@@ -229,7 +229,7 @@ test('F1 api: non-retryable codes stop at once; retryNow resends the same reques
   const TABLE = {
     INVALID_REQUEST: ['요청 정보가 올바르지 않아요. 새로고침 후 다시 시도해 주세요.', false],
     REGISTRATION_CLOSED: ['지금은 참여 접수 시간이 아니에요.', false],
-    CONSENT_TEXT_MISSING: ["개인정보 동의 안내가 아직 준비되지 않았어요. 명함을 넣으셨다면 '명함을 명함함에 넣었어요'를 선택해 주세요.", false],
+    CONSENT_TEXT_MISSING: ["개인정보 동의 안내가 아직 준비되지 않았어요. 부스 스태프에게 말씀해 주세요.", false],
     REQUIRED_FIELDS: ['이름과 휴대폰 번호를 입력해 주세요.', false],
     INVALID_PHONE: ['휴대폰 번호를 다시 확인해 주세요. (예: 010-1234-5678)', false],
     INVALID_EMAIL: ['이메일 형식을 확인해 주세요.', false],
@@ -536,7 +536,7 @@ test('F1 config: server content only when contentReady with questions, else embe
   assert.strictEqual(none.source, 'embedded');
   assert.strictEqual(none.registrationOpen, true);
   assert.strictEqual(none.eventId, 'a-day-2026');
-  assert.strictEqual(none.infoPathReady, false, 'the embedded consent is still a placeholder, so the info path stays closed');
+  assert.strictEqual(none.infoPathReady, true, 'the embedded consent is the team text now, so the info path is open offline');
 
   // gates come from the server even when the questions fall back
   const closed = QC.effectiveContent(Object.assign({}, base, { contentReady: false, questions: null, registrationOpen: false, infoPathReady: false }), emb);
@@ -549,7 +549,15 @@ test('F1 config: server content only when contentReady with questions, else embe
   assert.strictEqual(emb.contentVersion, 'embedded-2026-10-v1');
   assert.strictEqual(emb.consent.version, 'a-day-2026-v1');
   assert.strictEqual(emb.consent.collectedItems, '수집 항목: 이름, 휴대폰 번호, 소속(입력한 경우), 이메일(입력한 경우), 퀴즈 응답, 기기 식별값(중복 참여 방지용)');
-  assert.strictEqual(emb.consent.requiredDetail, '[입력 필요] 개인정보 수집·이용 안내');
+  // The team's consent text (C25), verbatim, four lines.
+  assert.strictEqual(emb.consent.requiredDetail, [
+    '- 수집 항목 : 이름, 연락처, 이메일, 회사명·직책, 고민 유형·퀴즈 응답, 기기 식별값(중복 참여 방지용)',
+    '- 이용 목적 이벤트 운영(참여 확인·경품 추첨)',
+    '- 보유 기간 수집일로부터 1년 (목적 달성 시 지체 없이 파기)',
+    '- 귀하는 개인정보 수집 및 이용에 대한 동의를 거부할 권리가 있습니다. 단, 필수 항목 동의 거부 시 이벤트 참여 및 경품 수령이 제한됩니다.'
+  ].join(String.fromCharCode(10)));
+  assert.strictEqual(emb.consent.version, 'a-day-2026-v1', 'the consent version is unchanged');
+  assert.strictEqual(emb.questions[0].explanation, '80개 브랜드 데이터 기반으로 쌓은 Insight 와 Valen Agent 를 오후 5시에서 보실 수 있습니다.');
   assert.strictEqual(emb.questions.length, 1);
   assert.strictEqual(emb.questions[0].type, 'text');
   assert.deepStrictEqual(emb.questions[0].accepted, ['[입력 필요]']);
@@ -601,7 +609,7 @@ test('F1 ticket: view model labels No. 042, issue and used times, status unused/
   assert.strictEqual(unused.label, 'No. 042');
   assert.strictEqual(unused.issuedText, '발급 15:03');
   assert.strictEqual(unused.status, 'unused');
-  assert.strictEqual(unused.statusText, '스태프에게 이 화면을 보여주세요');
+  assert.strictEqual(unused.statusText, '룰렛 참여 전');
   assert.strictEqual(unused.clockText, '지금 15:03:07');
   assert.strictEqual(unused.redeemed, false);
   assert.strictEqual(unused.demo, false);

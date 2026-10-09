@@ -1,9 +1,11 @@
 # Valen Quiz (A-DAY 2026 booth)
 
 Static participant page served by GitHub Pages so the printed QR never depends on Google account routing.
-The page shows the landing, info, quiz and saving screens, then the numbered ticket with a live clock and a staff panel
-(PIN, then mark the ticket used before the roulette spins). After a reload it shows the stored ticket and checks its status once.
-It saves through a JSON API (Apps Script, fetch only).
+The page walks one person through: the info form (name, email, phone, company and title, one required consent), the concern
+choice, the one-question quiz, saving, and the final "participation complete" screen. That screen carries the numbered ticket
+with a live clock and a staff panel (PIN, then mark the ticket used before the roulette spins). After a reload it shows the
+stored ticket and checks its status once. It saves through a JSON API (Apps Script, fetch only). The theme is light; the final
+screen uses the team's blue gradient design with `assets/gift.webp` and `assets/valen-logo.webp`.
 
 ## Permanence rule
 
@@ -20,7 +22,8 @@ The API address in `defaults.js` is public by nature and may stay there.
 
 - `index.html`: screens and wiring (inline CSS and script, ES2017 only).
 - `quiz-core.js`: pure logic (API client, validation, storage, routing). Loaded as `window.QuizCore`.
-- `defaults.js`: build id, API address and the embedded fallback question and consent text. Loaded as `window.VALEN_QUIZ_DEFAULTS`.
+- `defaults.js`: build id, API address and the embedded fallback question and the team's consent text. Loaded as `window.VALEN_QUIZ_DEFAULTS`.
+- `assets/`: the gift and logo images of the final screen.
 - `test/`: `node --test` suites (`page.test.js` runs the real page scripts against a small fake DOM). No dependencies and no build step.
 
 Both script tags in `index.html` carry the same `?v=<build>` as `defaults.js`. Change all three together when publishing.
