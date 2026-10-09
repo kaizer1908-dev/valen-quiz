@@ -997,3 +997,39 @@ test('F1r storage: a malformed success is never stored as a ticket; the pending 
   assert.strictEqual(saved2.ticket.ticketNo, 42);
   assert.strictEqual(saved2.pending, undefined);
 });
+
+test('F1r storage: acceptTicket is read when the answer arrives; a refused ticket is never written and the pending request stays', async () => {
+  const TK = Object.assign({}, TICKET, { ticketId: 'zzzzzzzzzzzzzzzz', ticketToken: 'yyyyyyyyyyyyyyyy' }); // ids that appear nowhere else
+  const writes = [];
+  const storage = {
+    m: new Map(),
+    getItem(k) { return this.m.has(k) ? this.m.get(k) : null; },
+    setItem(k, v) { writes.push(String(v)); this.m.set(k, String(v)); },
+    removeItem(k) { this.m.delete(k); }
+  };
+  const st = QC.freshState('a-day-2026');
+  st.entryType = 'card';
+  let latest = ''; // the latest known config event, which changes while the request is in flight
+  const opts = { acceptTicket: (t) => !latest || t.eventId === latest };
+  const clock = makeClock();
+  const f = makeFetch([{ json: okEnv({ ticket: TK }) }]);
+  const p = QC.submitWithPending(makeApi(f, clock), storage, st, SUBMIT_BODY, clock.now, opts);
+  latest = 'phonetest-1012'; // config B arrives before the answer
+  const r = await p;
+  assert.strictEqual(r.response.ok, false);
+  assert.strictEqual(r.response.code, 'EVENT_CHANGED');
+  assert.strictEqual(r.response.action, 'none');
+  assert.strictEqual(r.state.ticket, undefined);
+  assert.strictEqual(r.state.pending.requestId, SUBMIT_BODY.requestId, 'the pending request stays as it was stored');
+  assert.ok(writes.length >= 1);
+  assert.ok(writes.every((w) => w.indexOf(TK.ticketId) === -1 && w.indexOf(TK.ticketToken) === -1), 'no write ever contains the ticket');
+  assert.strictEqual(JSON.parse(storage.m.get(QC.STORAGE_KEYS.state)).pending.requestId, SUBMIT_BODY.requestId);
+  // the matching event: the ticket is stored exactly once
+  writes.length = 0;
+  latest = 'a-day-2026';
+  const f2 = makeFetch([{ json: okEnv({ ticket: TK }) }]);
+  const r2 = await QC.submitWithPending(makeApi(f2, makeClock()), storage, st, SUBMIT_BODY, clock.now, opts);
+  assert.strictEqual(r2.response.ok, true);
+  assert.strictEqual(writes.filter((w) => w.indexOf(TK.ticketId) !== -1).length, 1, 'stored once');
+  assert.strictEqual(JSON.parse(storage.m.get(QC.STORAGE_KEYS.state)).pending, undefined);
+});

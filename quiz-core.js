@@ -588,6 +588,8 @@
 
   // Writes `pending` (requestId + exact body) to storage BEFORE the first send, then submits.
   // Resolves {response, state}. On success the ticket is stored and info/pending are dropped.
+  // opts.acceptTicket(ticket) is read when the answer arrives: if it returns false the ticket is neither applied nor
+  // stored; the result is {code:'EVENT_CHANGED', action:'none'} with the pending request left as it was stored.
   // If a submit is already active (api.busy), nothing is written: the stored pending of the active request stays.
   function submitWithPending(api, storage, state, body, now, opts) {
     if (typeof api.busy === 'function' && api.busy('submit')) {
@@ -601,6 +603,9 @@
         return { response: res, state: state }; // api without busy(): do not touch storage again
       }
       if (res.ok && isObject(res.data.ticket)) {
+        if (opts && typeof opts.acceptTicket === 'function' && !opts.acceptTicket(res.data.ticket)) {
+          return { response: failure('EVENT_CHANGED', { message: '', action: 'none', attempts: res.attempts }), state: pending };
+        }
         next = applyTicket(pending, res.data.ticket);
       } else if (res.ok) {
         res = failure('BAD_RESPONSE', { attempts: res.attempts });

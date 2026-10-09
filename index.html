@@ -268,7 +268,9 @@
   var demo = /[?&]demo=1(?:&|$)/.test(window.location.search);
   // ?demo=1 never calls the quiz API (the Pretendard font may still load from jsdelivr) (in-memory demo api for config and tickets) and never touches the real
   // storage keys: every storage call below receives this prefix.
-  var SO = { prefix: demo ? 'demo:' : '' };
+  // acceptTicket is read by submitWithPending when the answer arrives: a ticket of an event other than the latest known
+  // config event is never written to storage (storage functions other than submitWithPending ignore it).
+  var SO = { prefix: demo ? 'demo:' : '', acceptTicket: function (t) { var latest = configEventId(); return !latest || t.eventId === latest; } };
   var storage = openStorage();
   var api = demo ? Q.createDemoApi() : Q.createApi({ url: D.apiUrl, build: D.build });
   var deviceId = Q.getDeviceId(storage, undefined, SO); // once per page load
@@ -285,7 +287,6 @@
   var clockTimer = null;
   var redeemReq = '';       // requestId of the redeem in progress: kept across staff re-taps until a definitive answer
   var redeeming = false;
-
   function $(id) { return document.getElementById(id); }
   // An async callback that throws must not leave a half-drawn page: show the message (a ticket stays visible).
   function guard(fn) {
@@ -696,14 +697,13 @@
     else { send(); }                                 // after exhaustion: the same body, the same requestId
   };
   function handleResult(r) {
+    if (r.code === 'EVENT_CHANGED') { // the ticket belongs to an earlier event: it was not stored; start over on the landing
+      try { if (storage) { storage.removeItem(Q.storageKeys(SO).state); } } catch (e) { /* storage blocked: nothing stored */ }
+      startOver(Q.freshState(configEventId()));
+      show('p-landing');
+      return;
+    }
     if (r.ok) {
-      // The newest config wins: a ticket for another event is not shown (it is not stored either).
-      var latest = configEventId();
-      if (latest && state.ticket.eventId !== latest) {
-        startOver(Q.resetForEvent(storage, state, latest, SO).state);
-        show('p-landing');
-        return;
-      }
       ticketExisting = r.data.existing || '';
       ticketCheck = '';
       releaseSaving();

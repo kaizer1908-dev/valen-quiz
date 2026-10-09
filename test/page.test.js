@@ -240,7 +240,8 @@ function buildDom(source) {
 const settle = async () => { for (let i = 0; i < 20; i++) { await new Promise((r) => setImmediate(r)); } };
 function makeStorage(initial) {
   const map = new Map(Object.entries(initial || {}));
-  return { map, getItem: (k) => (map.has(k) ? map.get(k) : null), setItem: (k, v) => { map.set(k, String(v)); }, removeItem: (k) => { map.delete(k); } };
+  const writes = []; // every value ever written, in order
+  return { map, writes, getItem: (k) => (map.has(k) ? map.get(k) : null), setItem: (k, v) => { writes.push(String(v)); map.set(k, String(v)); }, removeItem: (k) => { map.delete(k); } };
 }
 function makeClock() {
   const c = { now: 1760000000000, timers: new Map(), nextId: 1 };
@@ -696,12 +697,15 @@ test('F2r run: a config for another event that arrives while saving wins over th
   assert.deepStrictEqual(h.page(), ['p-landing'], 'a ticket of another event is not shown');
   assert.strictEqual(h.text('ticket-no'), '');
   assert.strictEqual(local.map.has(STORE_KEY), false, 'and not stored');
+  assert.ok(local.writes.length >= 1);
+  assert.ok(local.writes.every((w) => w.indexOf('tid-5-') === -1 && w.indexOf('tok-5-') === -1), 'no write ever contained the ticket of the other event');
   assert.strictEqual(local.map.get(DEVICE_KEY), DEVICE_ID);
   // the same event: the ticket is shown
   const cfgE = deferred();
   const postE = deferred();
   const f2 = fakeFetch((url, init) => (init.method === 'GET' ? cfgE.promise : postE.promise));
-  const h2 = boot({ fetch: f2 });
+  const local2 = makeStorage();
+  const h2 = boot({ fetch: f2, local: local2 });
   await settle();
   h2.click(h2.byId['landing-start']); await settle();
   h2.check(h2.byId['card-skip'], true); h2.click(h2.byId['info-next']); await settle();
@@ -711,6 +715,7 @@ test('F2r run: a config for another event that arrives while saving wins over th
   cfgE.resolve(env(cfgData())); await settle();
   postE.resolve(env({ ticket: mkTicket(6), repeated: false, existing: '', timing: {} })); await settle();
   assert.deepStrictEqual(h2.page(), ['p-ticket']);
+  assert.strictEqual(local2.writes.filter((w) => w.indexOf('tid-6-') !== -1).length, 1, 'the ticket of the matching event is stored once');
 });
 
 test('F2r run: a success without a valid ticket is retried and never shown; the pending body is kept', async () => {
