@@ -631,6 +631,139 @@ test('F3r run: TICKET_NOT_FOUND from a redeem shows 확인 불가; a redeem answ
   assert.strictEqual(h3.text('staff-result'), '');
 });
 
+// ============================================================================================ run: Codex review (C24)
+const DEVICE_KEY = 'valen-quiz:device';
+const DEVICE_ID = 'dev-0000-aaaa-bbbb-cccc';
+function pendingState(extra) {
+  const body = { action: 'submit', apiVersion: 3, requestId: 'req-pending-aaaaaaaa', deviceId: DEVICE_ID, entryType: 'card', info: null, consent: null,
+    contentVersion: 'v1', answers: [{ questionId: 'q1', value: '정답' }], build: DEFAULTS.build };
+  return JSON.stringify(Object.assign({ v: 3, savedAt: 1760000000000, eventId: 'a-day-2026', stage: 'saving', entryType: 'card', answers: { q1: '정답' }, qIndex: 0,
+    pending: { requestId: body.requestId, body } }, extra || {}));
+}
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve: (text) => resolve({ text: () => Promise.resolve(text) }) };
+}
+
+test('F2r run: a stored pending request waits for config and is not replayed into another event', async () => {
+  // another event: no replay, landing, the stored state is gone, the device id stays
+  const fA = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ eventId: 'phonetest-1012' })) : env({ ticket: mkTicket(1) })));
+  const localA = makeStorage({ [STORE_KEY]: pendingState(), [DEVICE_KEY]: DEVICE_ID });
+  const hA = boot({ fetch: fA, local: localA });
+  await settle();
+  assert.strictEqual(fA.posts('submit').length, 0, 'no replay into another event');
+  assert.deepStrictEqual(hA.page(), ['p-landing']);
+  assert.strictEqual(localA.map.has(STORE_KEY), false);
+  assert.strictEqual(localA.map.get(DEVICE_KEY), DEVICE_ID);
+  // slow config: nothing is sent while it is awaited; the same event then replays with the same requestId
+  const cfgD = deferred();
+  const fB = fakeFetch((url, init) => (init.method === 'GET' ? cfgD.promise : env({ ticket: mkTicket(2), repeated: true, existing: '', timing: {} })));
+  const hB = boot({ fetch: fB, local: makeStorage({ [STORE_KEY]: pendingState(), [DEVICE_KEY]: DEVICE_ID }) });
+  await settle();
+  assert.strictEqual(fB.posts('submit').length, 0, 'waiting for config');
+  assert.deepStrictEqual(hB.page(), ['p-wait']);
+  cfgD.resolve(env(cfgData())); await settle();
+  assert.strictEqual(fB.posts('submit').length, 1);
+  assert.strictEqual(fB.posts('submit')[0].requestId, 'req-pending-aaaaaaaa');
+  assert.deepStrictEqual(hB.page(), ['p-ticket']);
+  // config never arrives: after the 5 s wait the replay goes ahead (accepted residual)
+  const fC = fakeFetch((url, init) => (init.method === 'GET' ? new Promise(() => {}) : env({ ticket: mkTicket(3), repeated: true, existing: '', timing: {} })));
+  const hC = boot({ fetch: fC, local: makeStorage({ [STORE_KEY]: pendingState(), [DEVICE_KEY]: DEVICE_ID }) });
+  await settle();
+  assert.strictEqual(fC.posts('submit').length, 0);
+  await hC.advance(5100);
+  assert.strictEqual(fC.posts('submit').length, 1);
+  assert.deepStrictEqual(hC.page(), ['p-ticket']);
+});
+
+test('F2r run: a config for another event that arrives while saving wins over the returned ticket', async () => {
+  const cfgD = deferred();
+  const postD = deferred();
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? cfgD.promise : postD.promise));
+  const local = makeStorage({ [DEVICE_KEY]: DEVICE_ID });
+  const h = boot({ fetch: f, local });
+  await settle();
+  h.click(h.byId['landing-start']); await settle();
+  h.check(h.byId['card-skip'], true); h.click(h.byId['info-next']); await settle();
+  await h.advance(5100); // config still pending: the embedded question
+  h.type(h.byId['q-answer'], 'x'); h.click(h.byId['q-confirm']); await settle();
+  h.click(h.byId['q-next']); await settle();
+  assert.deepStrictEqual(h.page(), ['p-saving']);
+  cfgD.resolve(env(cfgData({ eventId: 'phonetest-1012' }))); await settle(); // config B while saving
+  assert.deepStrictEqual(h.page(), ['p-saving'], 'config does not interrupt the request in flight');
+  postD.resolve(env({ ticket: mkTicket(5), repeated: false, existing: '', timing: {} })); await settle(); // ticket of event A
+  assert.deepStrictEqual(h.page(), ['p-landing'], 'a ticket of another event is not shown');
+  assert.strictEqual(h.text('ticket-no'), '');
+  assert.strictEqual(local.map.has(STORE_KEY), false, 'and not stored');
+  assert.strictEqual(local.map.get(DEVICE_KEY), DEVICE_ID);
+  // the same event: the ticket is shown
+  const cfgE = deferred();
+  const postE = deferred();
+  const f2 = fakeFetch((url, init) => (init.method === 'GET' ? cfgE.promise : postE.promise));
+  const h2 = boot({ fetch: f2 });
+  await settle();
+  h2.click(h2.byId['landing-start']); await settle();
+  h2.check(h2.byId['card-skip'], true); h2.click(h2.byId['info-next']); await settle();
+  await h2.advance(5100);
+  h2.type(h2.byId['q-answer'], 'x'); h2.click(h2.byId['q-confirm']); await settle();
+  h2.click(h2.byId['q-next']); await settle();
+  cfgE.resolve(env(cfgData())); await settle();
+  postE.resolve(env({ ticket: mkTicket(6), repeated: false, existing: '', timing: {} })); await settle();
+  assert.deepStrictEqual(h2.page(), ['p-ticket']);
+});
+
+test('F2r run: a success without a valid ticket is retried and never shown; the pending body is kept', async () => {
+  // {"ticket":{}} on every attempt
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : '{"ok":true,"apiVersion":3,"data":{"ticket":{}}}'));
+  const local = makeStorage();
+  const h = boot({ fetch: f, local });
+  await settle();
+  await cardPathToTicket(h);
+  await h.advance(60000);
+  const posts = f.posts('submit');
+  assert.strictEqual(posts.length, 4, 'four automatic attempts');
+  assert.ok(posts.every((p) => JSON.stringify(p) === JSON.stringify(posts[0])));
+  assert.deepStrictEqual(h.page(), ['p-saving']);
+  assert.strictEqual(h.byId['saving-retry'].hidden, false);
+  assert.strictEqual(h.text('ticket-no'), '');
+  const saved = JSON.parse(local.map.get(STORE_KEY));
+  assert.strictEqual(saved.ticket, undefined);
+  assert.strictEqual(saved.pending.requestId, posts[0].requestId, 'pending kept with its exact body');
+  // {"data":{}} is retried automatically inside the loop and the second, valid answer is shown
+  let n = 0;
+  const f2 = fakeFetch((url, init) => {
+    if (init.method === 'GET') { return env(cfgData()); }
+    n += 1;
+    return n === 1 ? '{"ok":true,"apiVersion":3,"data":{}}' : env({ ticket: mkTicket(4), repeated: false, existing: '', timing: {} });
+  });
+  const h2 = boot({ fetch: f2 });
+  await settle();
+  await cardPathToTicket(h2);
+  await h2.advance(5000);
+  assert.strictEqual(n, 2, 'retried automatically within the loop, without a tap');
+  assert.deepStrictEqual(h2.page(), ['p-ticket']);
+  assert.strictEqual(h2.text('ticket-no'), 'No. 004');
+});
+
+test('F2r run: the info inputs are empty and the saving state is released once a valid ticket is shown', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : env({ ticket: mkTicket(7, { entryType: 'info' }), repeated: false, existing: '', timing: {} })));
+  const local = makeStorage();
+  const h = boot({ fetch: f, local });
+  await settle();
+  h.click(h.byId['landing-start']); await settle();
+  h.type(h.byId['field-name'], '테스트참가자'); h.type(h.byId['field-org'], '테스트회사');
+  h.type(h.byId['field-phone'], '010-0000-0007'); h.type(h.byId['field-email'], 'test@example.com');
+  h.check(h.byId['consent-required'], true);
+  h.click(h.byId['info-next']); await settle();
+  h.type(h.byId['q-answer'], '정답'); h.click(h.byId['q-confirm']); await settle();
+  h.click(h.byId['q-next']); await settle();
+  assert.deepStrictEqual(h.page(), ['p-ticket']);
+  assert.strictEqual(f.posts('submit')[0].info.name, '테스트참가자', 'the request carried the info');
+  ['field-name', 'field-org', 'field-phone', 'field-email'].forEach((id) => assert.strictEqual(h.byId[id].value, '', id + ' is emptied'));
+  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).info, undefined);
+});
+
 test('F2r run: a throwing async callback shows the boot card and keeps a valid ticket visible', async () => {
   let release;
   const slow = new Promise((resolve) => { release = () => resolve({ text: () => Promise.resolve(env({ ticket: mkTicket(6) })) }); });

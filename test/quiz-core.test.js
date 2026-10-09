@@ -73,6 +73,7 @@ function makeFetch(steps, onCall) {
 
 const okEnv = (data) => ({ ok: true, apiVersion: 3, serverMs: 5, data });
 const errEnv = (code) => ({ ok: false, apiVersion: 3, serverMs: 5, code, message: 'server text', retryable: false });
+const CONFIG_DATA = { eventId: 'a-day-2026', registrationOpen: true, infoPathReady: true, contentReady: false, questions: null };
 const TICKET = {
   ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'bbbbbbbbbbbbbbbb', ticketNo: 42, ticketLabel: 'No. 042', eventId: 'a-day-2026',
   entryType: 'card', issuedAt: '2026-10-14T06:03:00.000Z', issuedLabel: '15:03', redeemed: false, redeemedAt: '', redeemedLabel: ''
@@ -104,7 +105,7 @@ const SUBMIT_BODY = {
 // ---- api -----------------------------------------------------------------------------------------------
 test('F1 api: GET config and POST text/plain with credentials omit, redirect follow, no custom headers', async () => {
   const clock = makeClock();
-  const f = makeFetch([{ json: okEnv({ eventId: 'a-day-2026' }) }]);
+  const f = makeFetch([{ json: okEnv(CONFIG_DATA) }, { json: okEnv({ ticket: TICKET }) }]);
   const api = makeApi(f, clock, { AbortController });
 
   const cfg = await api.config();
@@ -726,7 +727,7 @@ test('F1r api: without AbortController a late success after the timeout is ignor
   const clock = makeClock();
   const late = {};
   const calls = [];
-  const okText = JSON.stringify(okEnv({ eventId: 'a-day-2026' }));
+  const okText = JSON.stringify(okEnv(CONFIG_DATA));
   const fetchFn = (url, init) => {
     calls.push({ url, init });
     const res = { ok: true, status: 200, text: () => Promise.resolve(okText) };
@@ -929,4 +930,70 @@ test('F1 public: quiz-core.js and defaults.js contain no /\\b1[A-Za-z0-9_-]{40,6
   const core = fs.readFileSync(path.join(__dirname, '..', 'quiz-core.js'), 'utf8');
   assert.strictEqual(core.indexOf('script.google.com'), -1);
   assert.strictEqual(core.indexOf('AKfycby'), -1);
+});
+
+// ---- action-specific success payloads (review C24) ----------------------------------------------------
+test('F1r api: a malformed success payload is BAD_RESPONSE and is retried inside the loop, per action', async () => {
+  const T = (extra) => Object.assign({}, TICKET, extra);
+  const goodTicket = { ticket: TICKET };
+  const cases = [];
+  const ticketVariants = [
+    {}, { ticket: {} }, { ticket: null }, { ticket: T({ ticketId: 'short' }) }, { ticket: T({ ticketToken: 'x' }) }, { ticket: T({ ticketNo: 0 }) },
+    { ticket: T({ ticketNo: 1.5 }) }, { ticket: T({ ticketNo: '42' }) }, { ticket: T({ redeemed: 'no' }) }, { ticket: T({ eventId: ' ' }) }
+  ];
+  ticketVariants.forEach((bad) => {
+    cases.push(['submit', bad, goodTicket, (api) => api.submit(SUBMIT_BODY)]);
+    cases.push(['ticket', bad, goodTicket, (api) => api.ticket('aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb')]);
+  });
+  const goodRedeem = { status: 'REDEEMED', ticket: TICKET };
+  [{ status: 'DONE', ticket: TICKET }, { status: 'REDEEMED' }, { status: 'REDEEMED', ticket: {} }, { ticket: TICKET }].forEach((bad) => {
+    cases.push(['redeem', bad, goodRedeem, (api) => api.redeem({ ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'bbbbbbbbbbbbbbbb', pin: '7391', requestId: 'req-aaaaaaaaaaaaaaaa' })]);
+  });
+  [{}, { eventId: 'a-day-2026' }, Object.assign({}, CONFIG_DATA, { registrationOpen: 'yes' }), Object.assign({}, CONFIG_DATA, { eventId: '' }),
+    Object.assign({}, CONFIG_DATA, { infoPathReady: undefined }), Object.assign({}, CONFIG_DATA, { contentReady: 1 })].forEach((bad) => {
+    cases.push(['config', bad, CONFIG_DATA, (api) => api.config()]);
+  });
+  for (const [action, bad, good, call] of cases) {
+    const clock = makeClock();
+    const f = makeFetch([{ json: okEnv(bad) }, { json: okEnv(good) }]);
+    const p = call(makeApi(f, clock));
+    await clock.advance(10000);
+    const r = await p;
+    const label = action + ' ' + JSON.stringify(bad);
+    assert.strictEqual(r.ok, true, label + ': the second, valid answer is accepted');
+    assert.strictEqual(f.calls.length, 2, label + ': the malformed answer was retried automatically');
+    assert.strictEqual(r.attempts, 2, label);
+    // and a valid answer needs no retry
+    const f2 = makeFetch([{ json: okEnv(good) }]);
+    const r2 = await call(makeApi(f2, makeClock()));
+    assert.strictEqual(r2.ok, true);
+    assert.strictEqual(f2.calls.length, 1, label + ': a valid answer is taken at once');
+  }
+});
+
+test('F1r storage: a malformed success is never stored as a ticket; the pending body stays until a valid ticket arrives', async () => {
+  const clock = makeClock();
+  const f = makeFetch([{ json: okEnv({ ticket: {} }) }]);
+  const storage = memStorage();
+  const st = QC.freshState('a-day-2026');
+  st.entryType = 'card';
+  const p = QC.submitWithPending(makeApi(f, clock), storage, st, SUBMIT_BODY, clock.now);
+  await clock.advance(30000);
+  const r = await p;
+  assert.strictEqual(r.response.ok, false);
+  assert.strictEqual(r.response.code, 'BAD_RESPONSE');
+  assert.strictEqual(r.response.retryable, true);
+  assert.strictEqual(f.calls.length, 4, 'four automatic attempts');
+  assert.ok(f.calls.every((c) => c.body === f.calls[0].body), 'the identical body every time');
+  const saved = JSON.parse(storage.m.get(QC.STORAGE_KEYS.state));
+  assert.strictEqual(saved.ticket, undefined, 'no ticket stored');
+  assert.strictEqual(saved.pending.requestId, SUBMIT_BODY.requestId);
+  assert.deepStrictEqual(saved.pending.body, SUBMIT_BODY);
+  // the manual retry with the stored body and a valid answer stores the ticket and drops the pending body
+  const f2 = makeFetch([{ json: okEnv({ ticket: TICKET }) }]);
+  const r2 = await QC.submitWithPending(makeApi(f2, makeClock()), storage, r.state, saved.pending.body, clock.now);
+  assert.strictEqual(r2.response.ok, true);
+  const saved2 = JSON.parse(storage.m.get(QC.STORAGE_KEYS.state));
+  assert.strictEqual(saved2.ticket.ticketNo, 42);
+  assert.strictEqual(saved2.pending, undefined);
 });

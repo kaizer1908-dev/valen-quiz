@@ -264,12 +264,29 @@
   }
 
   // ---------------------------------------------------------------- API client
-  function parseEnvelope(text) {
+  // A success payload is checked by action INSIDE the attempt: a malformed one is BAD_RESPONSE (retryable), so
+  // the retry loop, the stored pending body and the ticket rules never see data the page cannot use.
+  function validTicket(t) {
+    return isObject(t) && typeof t.ticketId === 'string' && ID_PATTERN.test(t.ticketId) &&
+      typeof t.ticketToken === 'string' && ID_PATTERN.test(t.ticketToken) &&
+      typeof t.eventId === 'string' && t.eventId.trim() !== '' &&
+      typeof t.ticketNo === 'number' && Number.isInteger(t.ticketNo) && t.ticketNo > 0 && typeof t.redeemed === 'boolean';
+  }
+  function validPayload(action, d) {
+    if (action === 'submit' || action === 'ticket') { return validTicket(d.ticket); }
+    if (action === 'redeem') { return (d.status === 'REDEEMED' || d.status === 'ALREADY_REDEEMED') && validTicket(d.ticket); }
+    if (action === 'config') {
+      return typeof d.eventId === 'string' && d.eventId.trim() !== '' && typeof d.registrationOpen === 'boolean' &&
+        typeof d.infoPathReady === 'boolean' && typeof d.contentReady === 'boolean';
+    }
+    return true;
+  }
+  function parseEnvelope(text, action) {
     var env;
     try { env = JSON.parse(text); } catch (e) { return failure('BAD_RESPONSE'); }
     if (!isObject(env) || typeof env.ok !== 'boolean') { return failure('BAD_RESPONSE'); }
     if (env.ok) {
-      if (env.apiVersion !== API_VERSION || !isObject(env.data)) { return failure('BAD_RESPONSE'); }
+      if (env.apiVersion !== API_VERSION || !isObject(env.data) || !validPayload(action, env.data)) { return failure('BAD_RESPONSE'); }
       return { ok: true, data: env.data, serverMs: env.serverMs };
     }
     var code = typeof env.code === 'string' && env.code ? env.code : 'SERVER_ERROR';
@@ -305,7 +322,7 @@
     }
 
     // One attempt. Always resolves to a result object, never rejects.
-    function attemptOnce(request, timeoutMs) {
+    function attemptOnce(request, timeoutMs, action) {
       return new Promise(function (resolve) {
         var done = false;
         var timer = null;
@@ -327,7 +344,7 @@
         try { p = fetchFn(request.url, init); } catch (e) { finish(failure('NETWORK')); return; }
         Promise.resolve(p)
           .then(function (res) { return res.text(); })
-          .then(function (text) { finish(parseEnvelope(text)); }, function () { finish(failure('NETWORK')); });
+          .then(function (text) { finish(parseEnvelope(text, action)); }, function () { finish(failure('NETWORK')); });
       });
     }
 
@@ -344,7 +361,7 @@
         function next() {
           op.attempt += 1;
           emit(action, 'sending', op.attempt, policy.attempts);
-          attemptOnce(request, policy.timeout).then(function (r) {
+          attemptOnce(request, policy.timeout, action).then(function (r) {
             r.attempts = op.attempt;
             r.elapsedMs = nowFn() - op.startedAt;
             if (r.ok) { resolve(r); return; }

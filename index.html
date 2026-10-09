@@ -57,8 +57,7 @@
   .card-skip { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 16px; margin-bottom: 18px; cursor: pointer; }
   .card-skip.on { border-color: var(--accent); }
   .card-skip input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
-  .card-skip strong { display: block; font-size: 16px; }
-  .card-skip span { color: var(--muted); font-size: 13px; }
+  .card-skip strong { display: block; font-size: 16px; } .card-skip span { color: var(--muted); font-size: 13px; }
   .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 6px 0 14px; }
   .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
   label.field { display: block; margin-bottom: 14px; font-size: 14px; color: var(--muted); }
@@ -107,8 +106,7 @@
     background: radial-gradient(circle at 15% 10%, #ffffff 0%, #e8f0ff 45%, #c9dafd 100%); }
   .ticket h2 { font-size: 26px; font-weight: 800; margin: 6px 0 14px; }
   .ticket .no { font-size: 48px; font-weight: 800; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
-  .ticket .msg { font-size: 16px; font-weight: 700; margin-top: 12px; }
-  .ticket .time { font-size: 13px; color: #444; margin-top: 8px; }
+  .ticket .msg { font-size: 16px; font-weight: 700; margin-top: 12px; } .ticket .time { font-size: 13px; color: #444; margin-top: 8px; }
   .ticket .clock { font-size: 16px; font-weight: 700; margin-top: 12px; font-variant-numeric: tabular-nums; color: #222; }
   .ticket .foot { font-size: 12px; color: #444; margin: 12px 0 0; }
   .ticket .demo-mark { display: inline-block; margin-bottom: 6px; padding: 3px 12px; border-radius: 99px; background: #111; color: #fff; font-size: 13px; font-weight: 700; }
@@ -118,19 +116,16 @@
   .cta.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--line-2); }
   #staff-panel { margin-top: 14px; }
   .staff-result { margin-top: 12px; min-height: 1.5em; font-weight: 700; }
-  .staff-result.ok { color: var(--accent); }
-  .staff-result.bad { color: var(--danger); }
+  .staff-result.ok { color: var(--accent); } .staff-result.bad { color: var(--danger); }
 </style>
 </head>
 <body>
 <div class="band"><b>VALEN</b><span class="badges"><span class="draft demo" id="demo-badge" hidden>미리보기</span><span class="draft">시안 v1</span></span></div>
 <main>
-
   <!-- Shown when a script fails to load or the page throws. Never leave a blank screen. -->
   <section class="msg-card" id="boot-card" data-testid="boot-card" role="alert" hidden>
     <p>잠시 후 새로고침해 주세요. 계속 안 되면 부스 스태프에게 말씀해 주세요.</p>
   </section>
-
   <!-- 1. Landing -->
   <section class="page" id="p-landing">
     <h1 data-testid="landing-title">Valen 행운퀴즈</h1>
@@ -147,7 +142,6 @@
     <button type="button" class="cta" id="landing-start" data-testid="landing-start">시작하기</button>
     <p class="note">참여 정보는 행사 운영 목적으로만 사용돼요.</p>
   </section>
-
   <!-- 2. Info (card path = one checkbox; otherwise name, phone and consent) -->
   <section class="page" id="p-info" hidden>
     <h2>참여 정보를 알려주세요</h2>
@@ -179,7 +173,6 @@
       <button type="submit" class="cta" id="info-next" data-testid="info-next">퀴즈 풀기</button>
     </form>
   </section>
-
   <!-- 3. Quiz (one question at a time; the question comes from the Sheet or from defaults.js) -->
   <section class="page" id="p-quiz" hidden>
     <div class="progress" id="progress" hidden></div>
@@ -200,22 +193,18 @@
     </div>
     <button type="button" class="cta" id="q-next" data-testid="q-next" hidden>다음</button>
   </section>
-
   <!-- Waiting for config (at most 5 s, then the embedded question is used) -->
   <section class="page" id="p-wait" hidden><h2 class="sr-only">행운퀴즈</h2><div class="spinner"></div></section>
-
   <!-- 4. Saving -->
   <section class="page center" id="p-saving" data-testid="saving-root" hidden>
     <div class="spinner" id="saving-spinner"></div>
     <h2 id="saving-text" role="status"></h2>
     <button type="button" class="cta" id="saving-retry" data-testid="saving-retry" hidden>다시 시도</button>
   </section>
-
   <!-- Error card (non-retryable server errors) -->
   <section class="page" id="p-error" data-testid="error-card" data-error-code="" hidden>
     <div class="msg-card" role="alert"><h2 id="error-text"></h2></div>
   </section>
-
   <!-- 5. Ticket and staff redeem. The ticket slot is the only part the ticket design (F4) may restyle. -->
   <section class="page" id="p-ticket" hidden>
     <div class="ticket" id="ticket-slot" data-testid="ticket-root">
@@ -238,7 +227,6 @@
       </form>
     </div>
   </section>
-
 </main>
 <script src="defaults.js?v=2026-10-08.1"></script>
 <script src="quiz-core.js?v=2026-10-08.1"></script>
@@ -338,6 +326,23 @@
   }
 
   // ------------------------------------------------------------------ config and routing
+  // Nothing of the old event carries over (the device id stays): ticket, staff panel, saving state, typed info.
+  function startOver(fresh) {
+    state = fresh;
+    content = null;
+    ticketCheck = ''; ticketExisting = ''; redeemReq = '';
+    staffResult('', '');
+    $('staff-panel').hidden = true;
+    $('staff-toggle').setAttribute('aria-expanded', 'false');
+    releaseSaving();
+  }
+  // Stops the saving timer and drops the saving object with its request body; the four info inputs are emptied
+  // so personal data does not stay in the page once the ticket exists (or the event changed).
+  function releaseSaving() {
+    stopTick();
+    saving = null;
+    ['field-name', 'field-org', 'field-phone', 'field-email'].forEach(function (id) { $(id).value = ''; });
+  }
   function onConfig(res) {
     if (res.ok) {
       cfg = { status: 'done', data: res.data };
@@ -348,13 +353,7 @@
     if (cfg.status === 'done' && state && current !== 'p-saving') {
       var r = Q.resetForEvent(storage, state, cfg.data.eventId, SO);
       if (r.reset) {
-        state = r.state;
-        content = null;
-        ticketCheck = ''; ticketExisting = ''; redeemReq = ''; // nothing of the old ticket carries over
-        staffResult('', '');
-        $('staff-panel').hidden = true;
-        $('staff-toggle').setAttribute('aria-expanded', 'false');
-
+        startOver(r.state);
         if (current !== 'p-wait') { show('p-landing'); }
       }
     }
@@ -384,7 +383,8 @@
   // Boot and every "what comes next" decision. Routes that need the questions wait for config first.
   function route() {
     var r = Q.routeOnLoad(state, null);
-    if (r.route === 'quiz') { whenContent(function () { enter(Q.routeOnLoad(state, content)); }); }
+    // A stored pending request is replayed only after config is known (at most 5 s): it may belong to another event.
+    if (r.route === 'quiz' || r.route === 'saving') { whenContent(function () { enter(Q.routeOnLoad(state, content)); }); }
     else { enter(r); }
   }
 
@@ -697,8 +697,16 @@
   };
   function handleResult(r) {
     if (r.ok) {
+      // The newest config wins: a ticket for another event is not shown (it is not stored either).
+      var latest = configEventId();
+      if (latest && state.ticket.eventId !== latest) {
+        startOver(Q.resetForEvent(storage, state, latest, SO).state);
+        show('p-landing');
+        return;
+      }
       ticketExisting = r.data.existing || '';
       ticketCheck = '';
+      releaseSaving();
       renderTicket();
       return;
     }
