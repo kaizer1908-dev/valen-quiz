@@ -121,7 +121,7 @@ test('F1 api: GET config and POST text/plain with credentials omit, redirect fol
   assert.strictEqual(get.init.body, undefined);
   assert.deepStrictEqual(Object.keys(get.init).filter((k) => k !== 'signal').sort(), ['cache', 'credentials', 'method', 'redirect']);
 
-  const t = await api.ticket('aaaaaaaaaaaaaaaa', 'b'.repeat(16));
+  const t = await api.submit(SUBMIT_BODY);
   assert.strictEqual(t.ok, true);
   const post = f.calls[1];
   assert.strictEqual(post.url, API);
@@ -130,11 +130,12 @@ test('F1 api: GET config and POST text/plain with credentials omit, redirect fol
   assert.strictEqual(post.init.redirect, 'follow');
   assert.strictEqual(post.init.cache, 'no-store');
   assert.deepStrictEqual(post.init.headers, { 'Content-Type': 'text/plain;charset=utf-8' });
-  assert.strictEqual(post.init.body, JSON.stringify({ action: 'ticket', apiVersion: 3, ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'b'.repeat(16) }));
+  assert.strictEqual(post.init.body, JSON.stringify(SUBMIT_BODY));
   assert.deepStrictEqual(Object.keys(post.init).filter((k) => k !== 'signal').sort(), ['body', 'cache', 'credentials', 'headers', 'method', 'redirect']);
-
-  await api.submit(SUBMIT_BODY);
-  assert.strictEqual(f.calls[2].init.body, JSON.stringify(SUBMIT_BODY));
+  // only config and submit remain: the ticket status call and the staff redeem are gone from the client
+  assert.strictEqual(api.ticket, undefined);
+  assert.strictEqual(api.redeem, undefined);
+  assert.deepStrictEqual(Object.keys(QC.POLICY).sort(), ['config', 'submit']);
 });
 
 test('F1 api: network, timeout, non-JSON, BUSY and SERVER_ERROR retry with backoff and the identical body', async () => {
@@ -182,30 +183,6 @@ test('F1 api: network, timeout, non-JSON, BUSY and SERVER_ERROR retry with backo
   assert.strictEqual(r2.exhausted, true);
   assert.strictEqual(f2.calls.length, 2);
 
-  // ticket: SERVER_ERROR twice, 2 s apart, then exhausted with the exact Korean copy.
-  const clock3 = makeClock();
-  const f3 = makeFetch([{ json: errEnv('SERVER_ERROR') }]);
-  const api3 = makeApi(f3, clock3);
-  const p3 = api3.ticket('aaaaaaaaaaaaaaaa', 'b'.repeat(16));
-  await clock3.advance(1999); assert.strictEqual(f3.calls.length, 1);
-  await clock3.advance(1); assert.strictEqual(f3.calls.length, 2);
-  const r3 = await p3;
-  assert.strictEqual(r3.code, 'SERVER_ERROR');
-  assert.strictEqual(r3.exhausted, true);
-  assert.strictEqual(r3.message, '서버가 잠시 응답하지 않아요. 자동으로 다시 시도할게요.');
-
-  // redeem: three attempts, 1 s then 3 s.
-  const clock4 = makeClock();
-  const f4 = makeFetch([{ reject: true }, { reject: true }, { json: okEnv({ status: 'REDEEMED', ticket: TICKET }) }]);
-  const api4 = makeApi(f4, clock4);
-  const p4 = api4.redeem({ ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'b'.repeat(16), pin: '0000', requestId: 'r-aaaaaaaaaaaaaaaa' });
-  await clock4.advance(999); assert.strictEqual(f4.calls.length, 1);
-  await clock4.advance(1); assert.strictEqual(f4.calls.length, 2);
-  await clock4.advance(2999); assert.strictEqual(f4.calls.length, 2);
-  await clock4.advance(1); assert.strictEqual(f4.calls.length, 3);
-  assert.strictEqual((await p4).ok, true);
-  assert.strictEqual(new Set(f4.calls.map((c) => c.body)).size, 1);
-
   // jitter is +-30 percent of the base delay.
   for (const [rnd, ms] of [[() => 0, 1050], [() => 1, 1950]]) {
     const c = makeClock();
@@ -218,7 +195,8 @@ test('F1 api: network, timeout, non-JSON, BUSY and SERVER_ERROR retry with backo
   }
 
   // saving-screen copy
-  assert.strictEqual(QC.savingText(1, 4, 0), '응모권을 발급하고 있어요');
+  assert.strictEqual(QC.savingText(1, 4, 0), '잠시만요');
+  assert.strictEqual(QC.COPY.saving, '잠시만요');
   assert.strictEqual(QC.savingText(1, 4, 8000), '사람이 많아 조금 걸리고 있어요. 이 화면을 닫지 말고 기다려 주세요.');
   assert.strictEqual(QC.savingText(2, 4, 9000), '다시 연결하고 있어요 (2/4)');
   assert.strictEqual(QC.COPY.submitExhausted, "연결이 잠시 불안정해요. 아래 '다시 시도'를 누르거나 부스 스태프에게 이 화면을 보여주세요.");
@@ -238,10 +216,6 @@ test('F1 api: non-retryable codes stop at once; retryNow resends the same reques
     PARTICIPANT_LIMIT: ['준비된 참여 인원이 모두 찼어요. 부스 스태프에게 문의해 주세요.', false],
     BUSY: ['참여자가 몰려 잠시 대기 중이에요. 자동으로 다시 시도할게요.', true],
     SERVER_ERROR: ['서버가 잠시 응답하지 않아요. 자동으로 다시 시도할게요.', true],
-    TICKET_NOT_FOUND: ['응모권을 확인할 수 없어요. 부스 스태프에게 이 화면을 보여주세요.', false],
-    STAFF_PIN_NOT_SET: ['스태프 확인 기능이 아직 설정되지 않았어요. (운영자: Config staff_pin)', false],
-    PIN_INVALID: ['확인 번호가 맞지 않아요.', false],
-    PIN_LOCKED: ['확인 번호 입력이 잠시 잠겼어요. 10분 후 다시 시도하거나 운영자에게 알려 주세요.', false],
     NETWORK: ['연결이 잠시 불안정해요. 자동으로 다시 시도할게요.', true],
     TIMEOUT: ['연결이 잠시 불안정해요. 자동으로 다시 시도할게요.', true],
     BAD_RESPONSE: ['연결이 잠시 불안정해요. 자동으로 다시 시도할게요.', true]
@@ -249,6 +223,12 @@ test('F1 api: non-retryable codes stop at once; retryNow resends the same reques
   Object.keys(TABLE).forEach((code) => {
     assert.strictEqual(QC.errorCopy(code), TABLE[code][0], code);
     assert.strictEqual(QC.errorInfo(code).retryable, TABLE[code][1], code + ' retryable');
+  });
+
+  // The ticket-status and staff codes left the table with their screens; an unknown code gets the generic server copy.
+  ['TICKET_NOT_FOUND', 'STAFF_PIN_NOT_SET', 'PIN_INVALID', 'PIN_LOCKED'].forEach((code) => {
+    assert.strictEqual(QC.errorInfo(code), null, code);
+    assert.strictEqual(QC.errorCopy(code), QC.errorCopy('SERVER_ERROR'), code);
   });
 
   // Every non-retryable server code: one request, no timer, the exact copy, last state "failed".
@@ -329,6 +309,35 @@ test('F1 phone: normalization matches the shared vectors', () => {
   assert.strictEqual(QC.normalizePhone(undefined), '');
 });
 
+test('C28 phone: formatPhone hyphenates while typing and on paste (digits only, at most 11)', () => {
+  const cases = [
+    ['', ''], ['0', '0'], ['010', '010'], ['0101', '010-1'], ['010123', '010-123'], ['0101234', '010-1234'],
+    ['01012345', '010-1234-5'], ['010123456', '010-1234-56'],
+    ['0101234567', '010-123-4567'],            // 10 digits: 3-3-4
+    ['01012345678', '010-1234-5678'],          // 11 digits: 3-4-4 (also a paste)
+    ['0111234567', '011-123-4567'],
+    ['010-1234-5678', '010-1234-5678'],        // already formatted: unchanged
+    ['010 1234 5678', '010-1234-5678'],
+    ['(010) 1234.5678', '010-1234-5678'],
+    ['010123456789', '010-1234-5678'],         // a twelfth digit is dropped
+    ['010-12a34', '010-1234'],                 // letters are dropped
+    ['０１０１２３４５６７８', '010-1234-5678'], // full-width digits
+    ['+82 10-1234-5678', '010-1234-5678'],     // a pasted international number keeps its meaning
+    ['+8201012345678', '010-1234-5678'],
+    ['abc', ''], [null, ''], [undefined, '']
+  ];
+  cases.forEach(([input, expected]) => assert.strictEqual(QC.formatPhone(input), expected, JSON.stringify(input)));
+  // deleting from the end walks back through the progressive shapes without ever ending in a hyphen
+  let typed = '010-1234-5678';
+  const seen = [];
+  while (typed.length) { typed = QC.formatPhone(typed.slice(0, -1)); seen.push(typed); }
+  seen.forEach((t) => assert.ok(!/-$/.test(t), 'ends in a hyphen: ' + t));
+  // formatting is cosmetic: what it produces validates like the plain digits
+  assert.strictEqual(QC.normalizePhone(QC.formatPhone('01012345678')), '01012345678');
+  assert.strictEqual(QC.normalizePhone(QC.formatPhone('0111234567')), '0111234567');
+  assert.strictEqual(QC.validateInfo('info', { name: '테스트참가자', phone: QC.formatPhone('01012345678') }, { required: true }, true).ok, true);
+});
+
 test('F1 info: card skips everything; info needs name, valid phone, required consent; email optional but checked; info blocked when infoPathReady false', () => {
   const good = { name: '테스트참가자', organization: '', phone: '010-0000-0001', email: '' };
   const yes = { required: true, marketing: false };
@@ -354,7 +363,7 @@ test('F1 payload: card body carries no personal fields; info body carries the co
   const personal = { name: '테스트참가자', organization: '테스트소속', phone: '010-0000-0001', email: 'test@example.com' };
 
   // A person typed info, then ticked the card box: nothing personal may travel.
-  const cardState = { entryType: 'card', info: personal, consent: { required: true, marketing: true }, answers: { q1: '정답' } };
+  const cardState = { entryType: 'card', info: personal, consent: { required: true, marketing: true }, answers: { concern: '신제품을 기획 중이다', q1: '정답' } };
   const card = QC.buildSubmitBody(cardState, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', '2026-10-10.1');
   assert.strictEqual(card.action, 'submit');
   assert.strictEqual(card.apiVersion, 3);
@@ -365,7 +374,7 @@ test('F1 payload: card body carries no personal fields; info body carries the co
   assert.strictEqual(card.deviceId, 'dev-aaaaaaaaaaaaaaaa');
   assert.strictEqual(card.contentVersion, 'embedded-2026-10-v1');
   assert.strictEqual(card.build, '2026-10-10.1');
-  assert.deepStrictEqual(card.answers, [{ questionId: 'q1', value: '정답' }]);
+  assert.deepStrictEqual(card.answers, [{ questionId: 'concern', value: '신제품을 기획 중이다' }], 'the quiz answer q1 is never sent');
   const raw = JSON.stringify(card);
   ['테스트참가자', '테스트소속', '010-0000-0001', 'test@example.com'].forEach((s) => assert.strictEqual(raw.indexOf(s), -1, s));
 
@@ -375,18 +384,38 @@ test('F1 payload: card body carries no personal fields; info body carries the co
     questions: [{ id: 'q1', order: 1, type: 'text', title: 't', hint: 'h', accepted: ['a'] }, { id: 'q2', order: 2, type: 'text', title: 't', hint: 'h', accepted: ['b'] }],
     consent: { version: 'server-consent-v9', collectedItems: 'x', requiredDetail: '동의 안내', marketingDetail: '' }
   }, DEFAULTS.embedded);
+  assert.strictEqual(server.source, 'server');
   const infoState = {
     entryType: 'info', info: { name: ' 부하테스트-01 ', organization: '', phone: '010-0000-0002', email: '' },
-    consent: { required: true, marketing: false }, answers: { q1: 'a'.repeat(150), q2: '', zzz: 'ignored' }
+    consent: { required: true, marketing: false }, answers: { concern: 'a'.repeat(150), q1: 'a'.repeat(150), q2: '', zzz: 'ignored' }
   };
   const info = QC.buildSubmitBody(infoState, server, 'dev-aaaaaaaaaaaaaaaa', 'req-bbbbbbbbbbbbbbbb', '2026-10-10.1');
   assert.strictEqual(info.entryType, 'info');
   assert.deepStrictEqual(info.info, { name: '부하테스트-01', organization: '', phone: '010-0000-0002', email: '' });
   assert.deepStrictEqual(info.consent, { required: true, marketing: false, version: 'server-consent-v9' });
   assert.strictEqual(info.contentVersion, '2026-10-v1');
-  assert.strictEqual(info.answers.length, 1, 'blank and unknown answers are not sent');
+  assert.deepStrictEqual(info.answers.map((a) => a.questionId), ['concern'], 'only the concern answer is sent, with server questions too');
   assert.strictEqual(info.answers[0].value.length, 100);
   assert.ok(JSON.stringify(info).length < 10 * 1024);
+});
+
+test('C28 payload: the answers are exactly [{concern}] for embedded and server content; no concern means no answers', () => {
+  const embedded = QC.effectiveContent(null, DEFAULTS.embedded);
+  const server = QC.effectiveContent(Object.assign({}, CONFIG_DATA, {
+    contentReady: true, contentVersion: 'srv-v1',
+    questions: [{ id: 'q1', order: 1, type: 'text', title: 't', hint: 'h', accepted: ['a'] }, { id: 'q2', order: 2, type: 'choice', title: 't', hint: '', options: ['x', 'y'], correct: 'x' }],
+    consent: { version: 'srv-v3', collectedItems: 'c', requiredDetail: '동의 안내', marketingDetail: '' }
+  }), DEFAULTS.embedded);
+  assert.strictEqual(server.source, 'server');
+  const picked = '해외 진출을 준비 중이다 | 크리에이터 협업을 검토 중이다';
+  [embedded, server].forEach((content) => {
+    const st = { entryType: 'info', info: { name: 'n', phone: '010-0000-0001' }, consent: { required: true }, answers: { concern: picked, q1: '차별화', q2: 'x' } };
+    const body = QC.buildSubmitBody(st, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b');
+    assert.deepStrictEqual(body.answers, [{ questionId: 'concern', value: picked }], content.source);
+    assert.strictEqual(JSON.stringify(body).indexOf('차별화'), -1, 'the quiz answer is nowhere in the body');
+  });
+  const none = QC.buildSubmitBody({ entryType: 'info', info: { name: 'n', phone: '010-0000-0001' }, consent: { required: true }, answers: { q1: '차별화' } }, embedded, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b');
+  assert.deepStrictEqual(none.answers, []);
 });
 
 // ---- storage -------------------------------------------------------------------------------------------
@@ -547,20 +576,25 @@ test('F1 config: server content only when contentReady with questions, else embe
   // defaults.js shape
   assert.strictEqual(emb.eventId, 'a-day-2026');
   assert.strictEqual(emb.contentVersion, 'embedded-2026-10-v1');
-  assert.strictEqual(emb.consent.version, 'a-day-2026-v2');
-  assert.strictEqual(emb.consent.collectedItems, '수집 항목: 이름, 휴대폰 번호, 소속(입력한 경우), 이메일(입력한 경우), 퀴즈 응답, 기기 식별값(중복 참여 방지용)');
-  // The team's consent text (C25), verbatim, four lines.
+  assert.strictEqual(emb.consent.version, 'a-day-2026-v3');
+  assert.strictEqual(emb.consent.collectedItems, '수집 항목: 이름, 휴대폰 번호, 소속(입력한 경우), 이메일(입력한 경우), 기기 식별값(중복 참여 방지용)');
+  assert.ok(emb.consent.collectedItems.indexOf('퀴즈 응답') === -1, 'the quiz answer is no longer collected');
+  // The team's consent text (C25, first line per C28), verbatim, four lines.
   assert.strictEqual(emb.consent.requiredDetail, [
-    '- 수집 항목 : 이름, 연락처, 이메일, 회사명·직책, 고민 유형·퀴즈 응답, 기기 식별값(중복 참여 방지용)',
+    '- 수집 항목 : 이름, 연락처, 이메일, 회사명·직책, 고민 유형, 기기 식별값(중복 참여 방지용)',
     '- 이용 목적 이벤트 운영(참여 확인·경품 추첨)',
     '- 보유 기간 수집일로부터 1년 (목적 달성 시 지체 없이 파기)',
     '- 귀하는 개인정보 수집 및 이용에 대한 동의를 거부할 권리가 있습니다. 단, 필수 항목 동의 거부 시 이벤트 참여 및 경품 수령이 제한됩니다.'
   ].join(String.fromCharCode(10)));
-  assert.strictEqual(emb.consent.version, 'a-day-2026-v2', 'the consent version is v2 (C27)');
+  assert.strictEqual(emb.consent.version, 'a-day-2026-v3', 'the consent version is v3 (C28)');
+  assert.strictEqual(DEFAULTS.build, '2026-10-12.1', 'the build id (C28)');
   assert.strictEqual(emb.questions[0].explanation, '80개 브랜드 데이터 기반으로 쌓은 Insight 와 Valen Agent 를 오후 5시에서 보실 수 있습니다.');
   assert.strictEqual(emb.questions.length, 1);
   assert.strictEqual(emb.questions[0].type, 'text');
-  assert.deepStrictEqual(emb.questions[0].accepted, ['[입력 필요]']);
+  assert.deepStrictEqual(emb.questions[0].accepted, ['차별화']);
+  assert.strictEqual(emb.questions[0].title, "만드는 것이 어려운 시대는 이미 지났습니다." + String.fromCharCode(10) + "'어떻게 OOO를 만들지' 정하는 것이 남은 경쟁입니다.");
+  assert.strictEqual(emb.questions[0].hint, 'ㅊㅂㅎ (3글자)');
+  assert.strictEqual(QC.gradeForDisplay(emb.questions[0], '차별화'), true);
   assert.ok(QC.ID_PATTERN.test(DEFAULTS.build.replace(/\./g, '-').padEnd(16, '0')));
   assert.ok(DEFAULTS.apiUrl.indexOf('https://script.google.com/macros/s/') === 0 && /\/exec$/.test(DEFAULTS.apiUrl));
 });
@@ -586,6 +620,25 @@ test('F1 grade: display grading matches the K3 normalization examples', () => {
   assert.strictEqual(QC.gradeForDisplay({ type: 'unknown' }, 'a'), '');
 });
 
+test('C28 route: stage intro returns to the intro; any state past it (or an older one without it) is never sent back', () => {
+  const info = { name: 'n', phone: '010-0000-0001' };
+  const content = { questions: [{ id: 'concern' }, { id: 'q1' }] };
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'intro', info, answers: {}, qIndex: 0 }), { route: 'intro' });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'intro', info, answers: {}, qIndex: 0 }, content), { route: 'intro' });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'intro', answers: {} }), { route: 'info' }, 'no info stored: the info form');
+  // a stored state survives a save and load with its stage
+  const s = memStorage();
+  QC.saveState(s, { eventId: 'a-day-2026', stage: 'intro', entryType: 'info', info, answers: {}, qIndex: 0 }, 1712345678901);
+  assert.strictEqual(QC.routeOnLoad(QC.loadState(s, 1712345678901)).route, 'intro');
+  // older states (no intro stage) at the concern step, the quiz, saving or done stay where they are
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'quiz', info, answers: {}, qIndex: 0 }, content), { route: 'quiz', qIndex: 0 });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'quiz', info, answers: { concern: 'a' }, qIndex: 1 }, content), { route: 'quiz', qIndex: 1 });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', info, answers: { concern: 'a' }, qIndex: 1 }, content), { route: 'quiz', qIndex: 1 });
+  const body = { requestId: 'req-aaaaaaaaaaaaaaaa' };
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'intro', info, answers: {}, pending: { requestId: body.requestId, body } }), { route: 'saving', resend: true });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'intro', info, answers: {}, ticket: TICKET }), { route: 'ticket' });
+});
+
 test('F1 route: reload routes to ticket, saving (resend pending), quiz, info or landing', () => {
   const body = { requestId: 'req-aaaaaaaaaaaaaaaa' };
   const content = { questions: [{ id: 'q1' }, { id: 'q2' }] };
@@ -603,48 +656,12 @@ test('F1 route: reload routes to ticket, saving (resend pending), quiz, info or 
   assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'card', answers: {}, pending: { requestId: '', body: null } }, content), { route: 'quiz', qIndex: 0 });
 });
 
-test('F1 ticket: view model labels No. 042, issue and used times, status unused/used/unknown', () => {
-  const now = new Date(2026, 9, 14, 15, 3, 7);
-  const unused = QC.ticketViewModel(TICKET, now);
-  assert.strictEqual(unused.label, 'No. 042');
-  assert.strictEqual(unused.issuedText, '발급 15:03');
-  assert.strictEqual(unused.status, 'unused');
-  assert.strictEqual(unused.statusText, '룰렛 참여 전');
-  assert.strictEqual(unused.clockText, '지금 15:03:07');
-  assert.strictEqual(unused.redeemed, false);
-  assert.strictEqual(unused.demo, false);
-
-  const used = QC.ticketViewModel(Object.assign({}, TICKET, { redeemed: true, redeemedAt: '2026-10-14T06:10:00.000Z', redeemedLabel: '15:10' }), now);
-  assert.strictEqual(used.status, 'used');
-  assert.strictEqual(used.statusText, '룰렛 참여 완료 (15:10)');
-  assert.strictEqual(used.redeemed, true);
-
-  // labels derived from the number and ISO time when the server labels are absent
-  const bare = QC.ticketViewModel({ ticketNo: 7, issuedAt: new Date(2026, 9, 14, 9, 5, 0).toISOString(), redeemed: false }, now);
-  assert.strictEqual(bare.label, 'No. 007');
-  assert.strictEqual(bare.issuedLabel, '09:05');
-  assert.strictEqual(QC.ticketViewModel({ ticketNo: 1234 }, now).label, 'No. 1234');
-
-  assert.strictEqual(QC.ticketViewModel(TICKET, now, { check: 'not_found' }).status, 'unknown');
-  assert.strictEqual(QC.ticketViewModel(TICKET, now, { check: 'not_found' }).statusText, '확인 불가');
-  assert.strictEqual(QC.ticketViewModel(TICKET, now, { check: 'checking' }).statusText, '확인 중');
-  const offline = QC.ticketViewModel(Object.assign({}, TICKET, { redeemed: true, redeemedLabel: '15:10' }), now, { check: 'unreachable' });
-  assert.strictEqual(offline.status, 'used', 'the stored status stays');
-  assert.strictEqual(offline.showRecheck, true);
-  assert.strictEqual(offline.recheckText, '상태 다시 확인');
-  assert.strictEqual(QC.ticketViewModel(TICKET, now, { existing: 'PHONE' }).note, '이 번호로 이미 발급된 응모권을 불러왔어요.');
-  assert.strictEqual(QC.ticketViewModel(TICKET, now).note, '');
-  const demo = QC.ticketViewModel(Object.assign({}, TICKET, { demo: true }), now);
-  assert.strictEqual(demo.demo, true);
-  assert.strictEqual(demo.demoWatermark, '미리보기 (사용 불가)');
-});
-
-test('F1 demo: demo api issues a demo-flagged ticket and never calls fetch', async () => {
+test('F1 demo: demo api answers config and submit in memory and never calls fetch', async () => {
   const realFetch = global.fetch;
   let fetchCalls = 0;
   global.fetch = function () { fetchCalls += 1; throw new Error('demo must not use fetch'); };
   try {
-    let t = Date.parse('2026-10-14T06:03:00.000Z');
+    const t = Date.parse('2026-10-14T06:03:00.000Z');
     const demo = QC.createDemoApi({ now: () => t });
     const cfg = await demo.config();
     assert.strictEqual(cfg.ok, true);
@@ -653,7 +670,6 @@ test('F1 demo: demo api issues a demo-flagged ticket and never calls fetch', asy
 
     const first = await demo.submit(SUBMIT_BODY);
     assert.strictEqual(first.ok, true);
-    assert.strictEqual(first.data.ticket.demo, true);
     assert.strictEqual(first.data.ticket.ticketLabel, 'No. 001');
     assert.ok(QC.ID_PATTERN.test(first.data.ticket.ticketId));
     const repeat = await demo.submit(SUBMIT_BODY);
@@ -661,18 +677,15 @@ test('F1 demo: demo api issues a demo-flagged ticket and never calls fetch', asy
     assert.strictEqual(repeat.data.ticket.ticketId, first.data.ticket.ticketId);
     const second = await demo.submit(Object.assign({}, SUBMIT_BODY, { requestId: 'req-cccccccccccccccc', deviceId: 'dev-cccccccccccccccc' }));
     assert.strictEqual(second.data.ticket.ticketLabel, 'No. 002');
-
-    const { ticketId, ticketToken } = first.data.ticket;
-    assert.strictEqual((await demo.ticket(ticketId, ticketToken)).data.ticket.redeemed, false);
-    assert.strictEqual((await demo.ticket(ticketId, 'wrong-token-0000000')).code, 'TICKET_NOT_FOUND');
-    t += 7 * 60 * 1000;
-    const red = await demo.redeem({ ticketId, ticketToken, pin: '0000', requestId: 'red-aaaaaaaaaaaaaaaa' });
-    assert.strictEqual(red.data.status, 'REDEEMED');
-    assert.strictEqual(red.data.ticket.redeemedLabel.length, 5);
-    assert.strictEqual((await demo.redeem({ ticketId, ticketToken, pin: '0000', requestId: 'red-aaaaaaaaaaaaaaaa' })).data.status, 'REDEEMED');
-    assert.strictEqual((await demo.redeem({ ticketId, ticketToken, pin: '0000', requestId: 'red-bbbbbbbbbbbbbbbb' })).data.status, 'ALREADY_REDEEMED');
-    assert.strictEqual((await demo.redeem({ ticketId, ticketToken, pin: '12', requestId: 'red-cccccccccccccccc' })).code, 'PIN_INVALID');
-    assert.strictEqual((await demo.ticket(ticketId, ticketToken)).data.ticket.redeemed, true);
+    // the same phone gets the same ticket again, like the server's phone dedup
+    const phoneBody = (requestId) => Object.assign({}, SUBMIT_BODY, { requestId, entryType: 'info', info: { name: 'n', organization: '', phone: '010-0000-0077', email: '' } });
+    const p1 = await demo.submit(phoneBody('req-dddddddddddddddd'));
+    const p2 = await demo.submit(phoneBody('req-eeeeeeeeeeeeeeee'));
+    assert.strictEqual(p2.data.ticket.ticketId, p1.data.ticket.ticketId);
+    assert.strictEqual(p2.data.existing, 'PHONE');
+    // the ticket status call and the staff redeem are gone
+    assert.strictEqual(demo.ticket, undefined);
+    assert.strictEqual(demo.redeem, undefined);
     assert.strictEqual(demo.demo, true);
     assert.strictEqual(fetchCalls, 0);
   } finally {
@@ -680,7 +693,7 @@ test('F1 demo: demo api issues a demo-flagged ticket and never calls fetch', asy
   }
 });
 
-// ==== Round 2 review fixes (tag F1r; the spec-named F1 tests above stay at exactly 14) ====================
+// ==== Round 2 review fixes (tag F1r) ====================
 test('F1r submit: a second submit with another requestId while one is active writes nothing (stored pending stays A)', async () => {
   const clock = makeClock();
   const f = makeFetch([{ hang: true }]);
@@ -770,16 +783,16 @@ test('F1r api: a success with another apiVersion is BAD_RESPONSE; unknown server
   const clock = makeClock();
   const f = makeFetch([{ json: { ok: true, apiVersion: 2, serverMs: 1, data: {} } }, { json: okEnv({ ticket: TICKET }) }]);
   const api = makeApi(f, clock);
-  const p = api.ticket('aaaaaaaaaaaaaaaa', 'b'.repeat(16));
+  const p = api.submit(SUBMIT_BODY);
   await clock.advance(0);
   assert.strictEqual(f.calls.length, 1);
-  await clock.advance(2000);
+  await clock.advance(1500);
   assert.strictEqual(f.calls.length, 2, 'BAD_RESPONSE is retried');
   assert.strictEqual((await p).ok, true);
   const noData = makeFetch([{ json: { ok: true, apiVersion: 3, serverMs: 1 } }]);
   const clockN = makeClock();
-  const pn = makeApi(noData, clockN).ticket('aaaaaaaaaaaaaaaa', 'b'.repeat(16));
-  await clockN.advance(2000);
+  const pn = makeApi(noData, clockN).submit(SUBMIT_BODY);
+  await clockN.advance(11000);
   assert.strictEqual((await pn).code, 'BAD_RESPONSE');
 
   // unknown code, not retryable: server message, one request
@@ -846,16 +859,6 @@ test('F1r route: stage info wins, and an all-answered quiz lands on the last que
   assert.deepStrictEqual(QC.routeOnLoad({ stage: 'info', entryType: 'card', answers: {}, pending: { requestId: body.requestId, body } }), { route: 'saving', resend: true });
 });
 
-test('F1r ticket: the stored redeemed flag survives the checking state', () => {
-  const now = new Date(2026, 9, 14, 15, 3, 7);
-  const usedTicket = Object.assign({}, TICKET, { redeemed: true, redeemedLabel: '15:10' });
-  const vm = QC.ticketViewModel(usedTicket, now, { check: 'checking' });
-  assert.strictEqual(vm.status, 'checking');
-  assert.strictEqual(vm.statusText, '확인 중');
-  assert.strictEqual(vm.redeemed, true);
-  assert.strictEqual(QC.ticketViewModel(TICKET, now, { check: 'checking' }).redeemed, false);
-});
-
 test('F1r payload: entry type must be card or info; the consent version is the one stored with the state', () => {
   const content = QC.effectiveContent(null, DEFAULTS.embedded);
   ['', undefined, null, 'Card', 'both'].forEach((entryType) => {
@@ -865,7 +868,7 @@ test('F1r payload: entry type must be card or info; the consent version is the o
   const seen = { entryType: 'info', info: { name: 'n', phone: '010-0000-0001' }, consent: { required: true, marketing: false, version: 'seen-v1' }, answers: {} };
   assert.strictEqual(QC.buildSubmitBody(seen, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b').consent.version, 'seen-v1');
   const noVersion = Object.assign({}, seen, { consent: { required: true, marketing: false } });
-  assert.strictEqual(QC.buildSubmitBody(noVersion, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b').consent.version, 'a-day-2026-v2');
+  assert.strictEqual(QC.buildSubmitBody(noVersion, content, 'dev-aaaaaaaaaaaaaaaa', 'req-aaaaaaaaaaaaaaaa', 'b').consent.version, 'a-day-2026-v3');
 });
 
 test('F1r storage: ticket fields are whitelisted; the draft v1 key is removed; a prefix keeps demo state apart', () => {
@@ -874,7 +877,7 @@ test('F1r storage: ticket fields are whitelisted; the draft v1 key is removed; a
   const st = { eventId: 'a-day-2026', stage: 'ticket', entryType: 'card', answers: {}, ticket: Object.assign({}, TICKET, { demo: true, phone: '010-0000-0009', extra: 'x', pin: '1111' }) };
   QC.saveState(s, st, T);
   const t = JSON.parse(s.getItem(QC.STORAGE_KEYS.state)).ticket;
-  assert.deepStrictEqual(Object.keys(t).sort(), ['demo', 'entryType', 'eventId', 'issuedAt', 'issuedLabel', 'redeemed', 'redeemedAt', 'redeemedLabel', 'ticketId', 'ticketLabel', 'ticketNo', 'ticketToken']);
+  assert.deepStrictEqual(Object.keys(t).sort(), ['entryType', 'eventId', 'issuedAt', 'issuedLabel', 'redeemed', 'redeemedAt', 'redeemedLabel', 'ticketId', 'ticketLabel', 'ticketNo', 'ticketToken']);
 
   // draft v1 key is removed on load (also when there is no v3 state)
   const s2 = memStorage();
@@ -941,7 +944,7 @@ test('F1 public: quiz-core.js and defaults.js contain no /\\b1[A-Za-z0-9_-]{40,6
 });
 
 // ---- action-specific success payloads (review C24) ----------------------------------------------------
-test('F1r api: a malformed success payload is BAD_RESPONSE and is retried inside the loop, per action', async () => {
+test('F1r api: a malformed success payload is BAD_RESPONSE and is retried inside the loop, for submit and config', async () => {
   const T = (extra) => Object.assign({}, TICKET, extra);
   const goodTicket = { ticket: TICKET };
   const cases = [];
@@ -951,11 +954,6 @@ test('F1r api: a malformed success payload is BAD_RESPONSE and is retried inside
   ];
   ticketVariants.forEach((bad) => {
     cases.push(['submit', bad, goodTicket, (api) => api.submit(SUBMIT_BODY)]);
-    cases.push(['ticket', bad, goodTicket, (api) => api.ticket('aaaaaaaaaaaaaaaa', 'b'.repeat(16))]);
-  });
-  const goodRedeem = { status: 'REDEEMED', ticket: TICKET };
-  [{ status: 'DONE', ticket: TICKET }, { status: 'REDEEMED' }, { status: 'REDEEMED', ticket: {} }, { ticket: TICKET }].forEach((bad) => {
-    cases.push(['redeem', bad, goodRedeem, (api) => api.redeem({ ticketId: 'aaaaaaaaaaaaaaaa', ticketToken: 'b'.repeat(16), pin: '7391', requestId: 'req-aaaaaaaaaaaaaaaa' })]);
   });
   [{}, { eventId: 'a-day-2026' }, Object.assign({}, CONFIG_DATA, { registrationOpen: 'yes' }), Object.assign({}, CONFIG_DATA, { eventId: '' }),
     Object.assign({}, CONFIG_DATA, { infoPathReady: undefined }), Object.assign({}, CONFIG_DATA, { contentReady: 1 })].forEach((bad) => {

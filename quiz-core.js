@@ -24,9 +24,7 @@
   // K1 retry policy. timeout and backoff are in milliseconds; backoff[i] follows failed attempt i+1.
   var POLICY = {
     config: { timeout: 10000, attempts: 2, backoff: [1500] },
-    submit: { timeout: 30000, attempts: 4, backoff: [1500, 3000, 6000] },
-    ticket: { timeout: 12000, attempts: 2, backoff: [2000] },
-    redeem: { timeout: 20000, attempts: 3, backoff: [1000, 3000] }
+    submit: { timeout: 30000, attempts: 4, backoff: [1500, 3000, 6000] }
   };
   var JITTER = 0.3;
   var MAX_QUESTIONS = 9;       // plus the page's concern answer = the server's 10 answers per submit
@@ -46,34 +44,18 @@
     PARTICIPANT_LIMIT: { message: '준비된 참여 인원이 모두 찼어요. 부스 스태프에게 문의해 주세요.', retryable: false, action: 'error-card' },
     BUSY: { message: '참여자가 몰려 잠시 대기 중이에요. 자동으로 다시 시도할게요.', retryable: true, action: 'backoff' },
     SERVER_ERROR: { message: '서버가 잠시 응답하지 않아요. 자동으로 다시 시도할게요.', retryable: true, action: 'backoff' },
-    TICKET_NOT_FOUND: { message: '응모권을 확인할 수 없어요. 부스 스태프에게 이 화면을 보여주세요.', retryable: false, action: 'ticket-unknown' },
-    PIN_INVALID: { message: '확인 번호가 맞지 않아요.', retryable: false, action: 'staff-panel' },
-    PIN_LOCKED: { message: '확인 번호 입력이 잠시 잠겼어요. 10분 후 다시 시도하거나 운영자에게 알려 주세요.', retryable: false, action: 'staff-panel' },
     NETWORK: { message: NET_COPY, retryable: true, action: 'backoff' },
     TIMEOUT: { message: NET_COPY, retryable: true, action: 'backoff' },
     BAD_RESPONSE: { message: NET_COPY, retryable: true, action: 'backoff' }
   };
-  // The code and message name the Config key, not its value; the PIN itself never appears in this public file.
-  ERROR_TABLE.STAFF_PIN_NOT_SET = {
-    message: '스태프 확인 기능이 아직 설정되지 않았어요. (운영자: Config staff_pin)',
-    retryable: false,
-    action: 'staff-panel'
-  };
 
   var COPY = {
-    saving: '응모권을 발급하고 있어요',
+    saving: '잠시만요',
     savingSlow: '사람이 많아 조금 걸리고 있어요. 이 화면을 닫지 말고 기다려 주세요.',
     submitExhausted: "연결이 잠시 불안정해요. 아래 '다시 시도'를 누르거나 부스 스태프에게 이 화면을 보여주세요.",
     length: '입력한 내용이 너무 길어요. 줄여서 다시 입력해 주세요.',
     emailRequired: '이메일을 입력해 주세요.',
-    orgRequired: '소속을 입력해 주세요.',
-    existingPhone: '이 번호로 이미 발급된 응모권을 불러왔어요.',
-    statusChecking: '확인 중',
-    statusUnknown: '확인 불가',
-    statusUnused: '룰렛 참여 전',
-    statusUsedPrefix: '룰렛 참여 완료',
-    recheck: '상태 다시 확인',
-    demoWatermark: '미리보기 (사용 불가)'
+    orgRequired: '소속을 입력해 주세요.'
   };
 
   // ---------------------------------------------------------------- small helpers
@@ -161,6 +143,18 @@
     return /^(?:010\d{8}|01[16789]\d{7,8})$/.test(digits) ? digits : '';
   }
 
+  // Hyphenates a phone number while it is typed or pasted: digits only, at most 11, then 3-4-4 (11 digits), 3-3-4
+  // (10 digits) or a progressive 3-4-rest. A leading +82 is read like the server does (a pasted international number
+  // keeps its meaning). It only changes how the text looks; validation still runs on normalizePhone.
+  function formatPhone(value) {
+    var text = String(value === null || value === undefined ? '' : value).normalize('NFKC').trim().replace(/^\+82[\s-]*0?/, '0');
+    var d = text.replace(/\D/g, '').slice(0, 11);
+    if (d.length <= 3) { return d; }
+    if (d.length <= 7) { return d.slice(0, 3) + '-' + d.slice(3); }
+    if (d.length === 10) { return d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6); }
+    return d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7);
+  }
+
   var EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   function str(v) { return v === null || v === undefined ? '' : String(v).trim(); }
 
@@ -237,6 +231,7 @@
 
   // ---------------------------------------------------------------- request body
   // The body is built once and stored as `pending`, so every attempt sends exactly the same bytes.
+  // The only answer sent is the concern pick (id RESERVED_ID); a quiz answer never leaves the device (spec C28).
   // Throws Error('INVALID_ENTRY_TYPE') unless state.entryType is exactly 'card' or 'info' (a missing type must
   // never silently become a card ticket).
   function buildSubmitBody(state, content, deviceId, requestId, build) {
@@ -265,13 +260,10 @@
         version: (st.consent && st.consent.version) || (content.consent ? content.consent.version : '')
       };
     }
-    var answers = st.answers || {};
-    (content.questions || []).forEach(function (q) {
-      var v = answers[q.id];
-      if (v !== undefined && v !== null && String(v) !== '') {
-        body.answers.push({ questionId: q.id, value: String(v).slice(0, 100) });
-      }
-    });
+    var concern = (st.answers || {})[RESERVED_ID];
+    if (concern !== undefined && concern !== null && String(concern) !== '') {
+      body.answers.push({ questionId: RESERVED_ID, value: String(concern).slice(0, 100) });
+    }
     return body;
   }
 
@@ -285,8 +277,7 @@
       typeof t.ticketNo === 'number' && Number.isInteger(t.ticketNo) && t.ticketNo > 0 && typeof t.redeemed === 'boolean';
   }
   function validPayload(action, d) {
-    if (action === 'submit' || action === 'ticket') { return validTicket(d.ticket); }
-    if (action === 'redeem') { return (d.status === 'REDEEMED' || d.status === 'ALREADY_REDEEMED') && validTicket(d.ticket); }
+    if (action === 'submit') { return validTicket(d.ticket); }
     if (action === 'config') {
       return typeof d.eventId === 'string' && d.eventId.trim() !== '' && typeof d.registrationOpen === 'boolean' &&
         typeof d.infoPathReady === 'boolean' && typeof d.contentReady === 'boolean';
@@ -416,8 +407,6 @@
       return run('config', { method: 'GET', url: apiUrl + '?action=config&v=' + encodeURIComponent(build), body: null });
     };
     api.submit = function (body) { return post('submit', body); };
-    api.ticket = function (id, token) { return post('ticket', { ticketId: id, ticketToken: token }); };
-    api.redeem = function (body) { return post('redeem', body); };
     // retryNow: skip a pending backoff, or re-send the last exhausted request with the same body (same requestId).
     api.retryNow = function (action) {
       var cur = ops[action];
@@ -434,17 +423,15 @@
     return api;
   }
 
-  // In-memory stand-in for ?demo=1. Never calls fetch; every ticket is flagged demo:true.
+  // In-memory stand-in for ?demo=1. Never calls fetch; it only answers config and submit.
   function createDemoApi(opts) {
     var o = opts || {};
     var nowFn = typeof o.now === 'function' ? o.now : Date.now;
-    var tickets = {};
     var byRequest = {};
     var byDevice = {};
     var byPhone = {};
     var count = 0;
     function ok(data) { return Promise.resolve({ ok: true, data: data, serverMs: 0, attempts: 1 }); }
-    function bad(code) { return Promise.resolve(failure(code, { attempts: 1 })); }
     function view(t) { return Object.assign({}, t.ticket); }
     var api = {
       demo: true,
@@ -466,33 +453,14 @@
         count += 1;
         var issuedAt = new Date(nowFn()).toISOString();
         var suffix = count + '-demo-preview'; // keeps the id inside the 16-64 character id pattern
-        var rec = { requests: {}, ticket: {
+        var rec = { ticket: {
           ticketId: 'demo-ticket-' + suffix, ticketToken: 'demo-token-' + suffix, ticketNo: count,
           ticketLabel: 'No. ' + String(count).padStart(3, '0'), eventId: 'demo-preview', entryType: b.entryType === 'info' ? 'info' : 'card',
-          issuedAt: issuedAt, issuedLabel: hhmm(issuedAt), redeemed: false, redeemedAt: '', redeemedLabel: '', demo: true
+          issuedAt: issuedAt, issuedLabel: hhmm(issuedAt), redeemed: false, redeemedAt: '', redeemedLabel: ''
         } };
-        tickets[rec.ticket.ticketId] = rec;
         byRequest[b.requestId] = rec;
         if (b.entryType === 'card') { byDevice[b.deviceId] = rec; } else if (b.info) { byPhone[normalizePhone(b.info.phone)] = rec; }
         return ok({ ticket: view(rec), repeated: false, existing: '', timing: { lockWaitMs: 0, lockHoldMs: 0 } });
-      },
-      ticket: function (id, token) {
-        var rec = tickets[id];
-        return rec && rec.ticket.ticketToken === token ? ok({ ticket: view(rec) }) : bad('TICKET_NOT_FOUND');
-      },
-      redeem: function (body) {
-        var b = body || {};
-        var rec = tickets[b.ticketId];
-        if (!rec || rec.ticket.ticketToken !== b.ticketToken) { return bad('TICKET_NOT_FOUND'); }
-        var pin = String(b.pin === undefined || b.pin === null ? '' : b.pin);
-        if (pin.length < 4 || pin.length > 12) { return bad('PIN_INVALID'); }
-        var t = rec.ticket;
-        var status = 'REDEEMED';
-        if (!t.redeemed) {
-          var at = new Date(nowFn()).toISOString();
-          t.redeemed = true; t.redeemedAt = at; t.redeemedLabel = hhmm(at); rec.requests[b.requestId] = true;
-        } else if (!rec.requests[b.requestId]) { status = 'ALREADY_REDEEMED'; }
-        return ok({ status: status, ticket: view(rec), timing: { lockWaitMs: 0, lockHoldMs: 0 } });
       },
       busy: function () { return false; },
       retryNow: function () { return Promise.resolve(failure('NOTHING_TO_RETRY', { message: '', action: 'none' })); }
@@ -503,7 +471,7 @@
   // ---------------------------------------------------------------- device storage
   var DRAFT_V1_KEY = 'valen-quiz-v1'; // draft v1 stored personal fields on devices that tried it; removed on load
   var TICKET_FIELDS = ['ticketId', 'ticketToken', 'ticketNo', 'ticketLabel', 'eventId', 'entryType', 'issuedAt', 'issuedLabel',
-    'redeemed', 'redeemedAt', 'redeemedLabel', 'demo'];
+    'redeemed', 'redeemedAt', 'redeemedLabel'];
 
   function sGet(storage, key) { try { return storage ? storage.getItem(key) : null; } catch (e) { return null; } }
   function sSet(storage, key, value) { try { if (!storage) { return false; } storage.setItem(key, value); return true; } catch (e) { return false; } }
@@ -631,14 +599,17 @@
     });
   }
 
-  // ---------------------------------------------------------------- reload routing and ticket view
+  // ---------------------------------------------------------------- reload routing
   // content (optional) lets the quiz resume at the first unanswered question, or at the last question when all
-  // are answered but nothing was sent (the page shows the locked answer and the "get ticket" button).
-  // The page must set state.stage when it moves between steps: stage "info" always routes to the info step.
+  // are answered but nothing was sent (the page shows the locked answer and the "participate" button).
+  // The page must set state.stage when it moves between steps: stage "info" always routes to the info step and stage
+  // "intro" (info given, start button not yet pressed) to the intro screen. A stored state without a stage "intro"
+  // (older builds, or any progress past the intro) is never sent back to it.
   function routeOnLoad(state, content) {
     if (!state) { return { route: 'landing' }; }
     if (isObject(state.ticket)) { return { route: 'ticket' }; }
     if (isObject(state.pending) && state.pending.requestId && isObject(state.pending.body)) { return { route: 'saving', resend: true }; }
+    if (state.stage === 'intro') { return isObject(state.info) ? { route: 'intro' } : { route: 'info' }; }
     if (state.stage === 'info') { return { route: 'info' }; }
     if (state.entryType !== 'card' && state.entryType !== 'info') { return { route: 'landing' }; }
     if (state.entryType === 'info' && !isObject(state.info)) { return { route: 'info' }; }
@@ -652,49 +623,15 @@
     return { route: 'quiz', qIndex: state.qIndex | 0 };
   }
 
-  // opts.check: "checking" | "not_found" | "unreachable" (the ticket call result); opts.existing: "PHONE" | "DEVICE" | "".
-  function ticketViewModel(ticket, now, opts) {
-    var t = ticket || {};
-    var o = opts || {};
-    var d = new Date(toMs(now));
-    var label = t.ticketLabel || (isBlank(t.ticketNo) ? '' : 'No. ' + String(t.ticketNo).padStart(3, '0'));
-    var issuedLabel = t.issuedLabel || hhmm(t.issuedAt);
-    var redeemedLabel = t.redeemedLabel || hhmm(t.redeemedAt);
-    var status = t.redeemed === true ? 'used' : 'unused';
-    if (o.check === 'checking') { status = 'checking'; }
-    if (o.check === 'not_found') { status = 'unknown'; }
-    var statusText = {
-      unused: COPY.statusUnused,
-      used: COPY.statusUsedPrefix + (redeemedLabel ? ' (' + redeemedLabel + ')' : ''),
-      unknown: COPY.statusUnknown,
-      checking: COPY.statusChecking
-    }[status];
-    return {
-      label: label,
-      issuedLabel: issuedLabel,
-      issuedText: issuedLabel ? '발급 ' + issuedLabel : '',
-      redeemed: t.redeemed === true, // the stored flag is kept while the status is being checked
-      redeemedLabel: redeemedLabel,
-      status: status,
-      statusText: statusText,
-      showRecheck: o.check === 'unreachable',
-      recheckText: COPY.recheck,
-      note: o.existing === 'PHONE' ? COPY.existingPhone : '',
-      clockText: '지금 ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()),
-      demo: t.demo === true,
-      demoWatermark: t.demo === true ? COPY.demoWatermark : ''
-    };
-  }
-
   return {
     API_VERSION: API_VERSION, ID_PATTERN: ID_PATTERN, TTL_MS: TTL_MS, STORAGE_KEYS: STORAGE_KEYS, POLICY: POLICY,
     ERROR_TABLE: ERROR_TABLE, COPY: COPY,
-    createApi: createApi, createDemoApi: createDemoApi, newId: newId, normalizePhone: normalizePhone,
+    createApi: createApi, createDemoApi: createDemoApi, newId: newId, normalizePhone: normalizePhone, formatPhone: formatPhone,
     validateInfo: validateInfo, buildSubmitBody: buildSubmitBody, effectiveContent: effectiveContent,
     normalizeAnswerText: normalizeAnswerText, gradeForDisplay: gradeForDisplay,
     getDeviceId: getDeviceId, storageKeys: storageKeys, freshState: freshState, loadState: loadState, saveState: saveState,
     resetForEvent: resetForEvent, applyTicket: applyTicket, submitWithPending: submitWithPending,
-    routeOnLoad: routeOnLoad, ticketViewModel: ticketViewModel, errorCopy: errorCopy, errorInfo: errorInfo,
+    routeOnLoad: routeOnLoad, errorCopy: errorCopy, errorInfo: errorInfo,
     savingText: savingText
   };
 });

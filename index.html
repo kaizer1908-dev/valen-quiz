@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Valen Lucky Quiz participant page (v3): info, concern choice, quiz, saving, and the final screen with the ticket and staff redeem.
+  Valen Lucky Quiz participant page (v3): info, event intro, concern choice, quiz, saving, and the final "participation complete" screen.
   How to open: run  py -m http.server 8765 --directory "<this folder>"  and browse to http://localhost:8765/?demo=1
   (?demo=1 runs without the API: nothing is sent or saved on the server).
   Logic lives in quiz-core.js; the build id, API address and fallback content live in defaults.js.
@@ -53,7 +53,8 @@
   .consent details { color: var(--muted); font-size: 13px; margin: 0 0 6px 30px; }
   .consent summary { cursor: pointer; }
   .consent details p { margin: 6px 0; white-space: pre-line; }
-  .concern label { padding: 14px 16px; border: 1px solid var(--line-2); border-radius: 14px; background: #fff; font-size: 16px; cursor: pointer; }
+  .concern { text-align: center; }
+  .concern label { text-align: left; padding: 14px 16px; border: 1px solid var(--line-2); border-radius: 14px; background: #fff; font-size: 16px; cursor: pointer; }
   .concern .picked { border-color: var(--accent); background: var(--surface); }
   .concern-hint { margin: 14px 0; padding: 12px 14px; border-radius: 12px; background: var(--surface); font-size: 15px; font-weight: 600; }
   .count { color: var(--muted); font-size: 13px; text-align: center; }
@@ -72,7 +73,8 @@
   .cap { display: block; font-size: 13px; color: var(--muted); margin-top: 6px; }
   .explain { background: var(--surface); border-radius: 14px; padding: 16px; margin-bottom: 18px; font-size: 15px; white-space: pre-line; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .text-answer { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: #fff; color: var(--text); margin-bottom: 14px; }
+  .text-answer { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: #fff; color: var(--text); margin-bottom: 14px; text-align: center; }
+  #p-quiz { text-align: center; }
   .center { text-align: center; }
   .spinner { width: 44px; height: 44px; margin: 40px auto 18px; border-radius: 50%; border: 4px solid var(--line); border-top-color: var(--accent); }
   @media (prefers-reduced-motion: no-preference) {
@@ -81,30 +83,20 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   }
-  /* Final screen: the whole slot is the team's "participation complete" design (navy text on the blue gradient). */
+  /* Event intro: no page header, plain white page, every text #091550 and centered (team design). */
+  .intro { text-align: center; color: #091550; padding-top: 14vh; }
+  .intro h2 { font-size: 28px; font-weight: 800; line-height: 1.35; margin: 0 0 28px; }
+  .intro .step { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 0 0 14px; font-size: 18px; font-weight: 600; }
+  .intro .num { flex: none; width: 30px; height: 30px; border-radius: 50%; background: #091550; color: #ffffff; font-size: 16px; font-weight: 800; line-height: 30px; text-align: center; }
+  .intro .lead { margin: 22px 0 36px; font-size: 15px; }
+  /* Final screen: the team's "participation complete" design (navy text on the blue gradient). */
   .ticket { display: flex; flex-direction: column; align-items: center; text-align: center; color: #0b1c5c; padding-top: 6vh; }
   .ticket .pill { padding: 10px 40px; border: 1.5px solid #0b1c5c; border-radius: 99px; font-size: 20px; font-weight: 800; }
-  .ticket .gift { width: 72%; max-width: 330px; height: auto; margin: 4vh 0 2vh; }
+  /* The gift is a 720x720 square: about 238px wide on a 375px phone (72% of the 331px column), never above 300px. */
+  .ticket .gift { width: 72%; max-width: 300px; height: auto; margin: 4vh 0 2vh; }
   .ticket h2 { font-size: 24px; font-weight: 800; margin: 12px 0 10px; }
-  .ticket .show { font-size: 20px; line-height: 1.5; margin: 0 0 18px; }
-  /* The ticket facts sit on a near-white card so their contrast does not depend on where the gradient is. */
-  .ticket .tbox { width: 100%; max-width: 320px; padding: 12px 16px; border-radius: var(--radius); background: rgba(255, 255, 255, .9); }
-  .ticket .no { font-size: 40px; font-weight: 800; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
-  .ticket .msg { font-size: 16px; font-weight: 700; margin-top: 8px; }
-  .ticket .time { font-size: 14px; font-weight: 600; margin-top: 6px; }
-  .ticket .clock { font-size: 16px; font-weight: 700; margin-top: 10px; font-variant-numeric: tabular-nums; }
-  .ticket .foot { font-size: 13px; font-weight: 600; margin: 10px 0 0; }
+  .ticket .show { font-size: 20px; line-height: 1.5; margin: 0; }
   .ticket .logo { width: 150px; height: auto; margin: 7vh 0 8px; }
-  .ticket .demo-mark { padding: 3px 12px; border-radius: 99px; background: #0b1c5c; color: #fff; font-size: 13px; font-weight: 700; }
-  .ticket.used .gift, .ticket.used .no { filter: grayscale(1); opacity: .55; }
-  .link { background: none; border: 0; color: #0b1c5c; text-decoration: underline; font-size: 14px; font-weight: 700; cursor: pointer; padding: 8px; }
-  .staff { margin-top: 18px; padding: 14px; border-radius: var(--radius); background: #2b4586; color: #fff; }
-  .staff .cta.secondary { background: transparent; color: #fff; border: 1.5px solid #fff; }
-  .staff .cta:not(.secondary) { background: #fff; color: #12235f; }
-  #staff-panel { margin-top: 14px; }
-  .staff label.field { color: #fff; }
-  .staff-result { margin-top: 12px; min-height: 1.5em; font-weight: 700; }
-  .staff-result.ok { color: #a8f0c6; } .staff-result.bad { color: #ffd0cc; }
 </style>
 </head>
 <body>
@@ -131,10 +123,18 @@
       <p class="note">입력해주신 정보는 명함 응모와 동일하게 처리됩니다. 이벤트 참여 및 경품 추첨에 활용됩니다.</p>
     </form>
   </section>
-  <!-- 2. Concern choice (several may be picked); the selection travels as the answer "concern". -->
+  <!-- 2. Event intro: shown once after the info form (stage "intro" is stored, so a reload returns here until the button is pressed). -->
+  <section class="page intro" id="p-intro" hidden>
+    <h2>딱 2문항이면 끝나요.</h2>
+    <p class="step"><span class="num">1</span> <span>요즘 가장 가까운 고민 고르기</span></p>
+    <p class="step"><span class="num">2</span> <span>빈칸에 들어갈 단어 맞히기</span></p>
+    <p class="lead">힌트가 있어서 어렵지 않아요 · 30초 소요</p>
+    <button type="button" class="cta" id="intro-start" data-testid="intro-start">시작하기</button>
+  </section>
+  <!-- 3. Concern choice (several may be picked); the selection travels as the answer "concern". -->
   <section class="page concern" id="p-concern" hidden>
     <h1>Valen Lucky Quiz</h1>
-    <h2>지금 가장 가까운 상황을 선택해주세요.</h2>
+    <h2>당신의 브랜드 또는 제품의 고민을 선택해주세요.</h2>
     <p class="sub">(중복체크 가능)</p>
     <label><input type="checkbox" data-testid="concern-option" value="신제품을 기획 중이다"> 신제품을 기획 중이다</label>
     <label><input type="checkbox" data-testid="concern-option" value="해외 진출을 준비 중이다"> 해외 진출을 준비 중이다</label>
@@ -144,7 +144,7 @@
     <p class="concern-hint" id="concern-hint" role="status" hidden>오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다</p>
     <button type="button" class="cta" id="concern-next" data-testid="concern-next" disabled>다음으로</button>
   </section>
-  <!-- 3. Quiz (the question comes from the Sheet or from defaults.js) -->
+  <!-- 4. Quiz (the question comes from the Sheet or from defaults.js); the answer stays on the device -->
   <section class="page" id="p-quiz" hidden>
     <h1>Valen Lucky Quiz</h1>
     <div class="count" id="q-count" hidden></div>
@@ -161,7 +161,7 @@
   </section>
   <!-- Waiting for config (at most 5 s, then the embedded question is used) -->
   <section class="page" id="p-wait" hidden><h2 class="sr-only">Valen Lucky Quiz</h2><div class="spinner"></div></section>
-  <!-- 4. Saving -->
+  <!-- 5. Saving -->
   <section class="page center" id="p-saving" data-testid="saving-root" hidden>
     <div class="spinner" id="saving-spinner"></div>
     <h2 id="saving-text" role="status"></h2>
@@ -171,37 +171,19 @@
   <section class="page" id="p-error" data-testid="error-card" data-error-code="" hidden>
     <div class="msg-card" role="alert"><h2 id="error-text"></h2></div>
   </section>
-  <!-- 5. Final screen: "participation complete" with the numbered ticket, then the staff redeem panel. -->
+  <!-- 6. Final screen: "participation complete". People at the booth only look at it; nothing is checked or marked on the server. -->
   <section class="page" id="p-ticket" hidden>
     <div class="ticket" id="ticket-slot" data-testid="ticket-root">
       <div class="pill">Lucky Quiz</div>
-      <img class="gift" src="assets/gift.webp" alt="" width="900" height="780">
+      <img class="gift" src="assets/gift.webp" alt="" width="720" height="720">
       <h2>참여해주셔서 감사합니다</h2>
       <p class="show">담당자에게<br>이 화면을 보여주세요</p>
-      <div class="tbox">
-      <div class="demo-mark" id="ticket-demo" hidden></div>
-      <div class="no" id="ticket-no" data-testid="ticket-no"></div>
-      <div class="time" id="ticket-issued" data-testid="ticket-issued"></div>
-      <div class="msg" id="ticket-status" data-testid="ticket-status" role="status"></div>
-      <button type="button" class="link" id="ticket-recheck" data-testid="ticket-recheck" hidden></button>
-      <div class="time" id="ticket-note"></div>
-      <div class="clock" id="ticket-clock" data-testid="ticket-clock"></div>
-      <p class="foot">응모권은 1인 1회만 사용할 수 있어요.</p>
-      </div>
-      <img class="logo" src="assets/valen-logo.webp" alt="valen" width="400" height="150">
-    </div>
-    <div class="staff">
-      <button type="button" class="cta secondary" id="staff-toggle" data-testid="staff-toggle" aria-expanded="false" aria-controls="staff-panel">스태프 확인</button>
-      <form id="staff-panel" novalidate hidden>
-        <label class="field">확인 번호<input id="staff-pin" data-testid="staff-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="12"></label>
-        <button type="submit" class="cta" id="staff-redeem" data-testid="staff-redeem">룰렛 완료 처리</button>
-        <div class="staff-result" id="staff-result" data-testid="staff-result" role="status"></div>
-      </form>
+      <img class="logo" src="assets/valen-logo.webp" alt="valen" width="400" height="120">
     </div>
   </section>
 </main>
-<script src="defaults.js?v=2026-10-09.1"></script>
-<script src="quiz-core.js?v=2026-10-09.1"></script>
+<script src="defaults.js?v=2026-10-12.1"></script>
+<script src="quiz-core.js?v=2026-10-12.1"></script>
 <script>
 // Safety net, registered before the app script so even a syntax error in it ends in a message, not a blank page.
 (function () {
@@ -235,12 +217,12 @@
   var T0 = Date.now();
   var CONFIG_WAIT_MS = 5000;   // the quiz waits at most this long for config, then uses the embedded question
   var IMAGE_WAIT_MS = 8000;    // an A/B image that has not loaded by now becomes a caption box
-  var PAGES = ['p-info', 'p-concern', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'];
+  var PAGES = ['p-info', 'p-intro', 'p-concern', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'];
   // The concern choice is the first "question": it is stored and sent like any answer (id "concern", labels joined by " | ").
   var CONCERN_Q = { id: 'concern', type: 'concern' };
 
   var demo = /[?&]demo=1(?:&|$)/.test(window.location.search);
-  // ?demo=1 never calls the quiz API (the Pretendard font may still load from jsdelivr) (in-memory demo api for config and tickets) and never touches the real
+  // ?demo=1 never calls the quiz API (the Pretendard font may still load from jsdelivr) (in-memory demo api for config and submit) and never touches the real
   // storage keys: every storage call below receives this prefix.
   // acceptTicket is read by submitWithPending when the answer arrives: a ticket of an event other than the latest known
   // config event is never written to storage (storage functions other than submitWithPending ignore it).
@@ -256,11 +238,6 @@
   var infoErrorCode = '';
   var locked = false;       // the current question has been answered
   var saving = null;        // {body, t0, attempt, max, exhausted, failedOnce, inFlight, tick}
-  var ticketExisting = '';  // "PHONE" or "DEVICE" when the server returned an earlier ticket for this submit
-  var ticketCheck = '';     // result of the last status check: "" | checking | not_found | unreachable
-  var clockTimer = null;
-  var redeemReq = '';       // requestId of the redeem in progress: kept across staff re-taps until a definitive answer
-  var redeeming = false;
   function $(id) { return document.getElementById(id); }
   // An async callback that throws must not leave a half-drawn page: show the message (a ticket stays visible).
   function guard(fn) {
@@ -293,7 +270,6 @@
 
   function show(id) {
     current = id;
-    if (id !== 'p-ticket') { stopClock(); }
     document.body.classList.toggle('done', id === 'p-ticket');
     PAGES.forEach(function (p) { $(p).hidden = p !== id; });
     window.scrollTo(0, 0);
@@ -307,18 +283,14 @@
   }
 
   // ------------------------------------------------------------------ config and routing
-  // Nothing of the old event carries over (the device id stays): ticket, staff panel, saving state, typed info.
+  // Nothing of the old event carries over (the device id stays): stored ticket, saving state, typed info.
   function startOver(fresh) {
     state = fresh;
     content = null;
-    ticketCheck = ''; ticketExisting = ''; redeemReq = '';
-    staffResult('', '');
-    $('staff-panel').hidden = true;
-    $('staff-toggle').setAttribute('aria-expanded', 'false');
     releaseSaving();
   }
   // Stops the saving timer and drops the saving object with its request body; the four info inputs are emptied
-  // so personal data does not stay in the page once the ticket exists (or the event changed).
+  // so personal data does not stay in the page once the save is confirmed (or the event changed).
   function releaseSaving() {
     stopTick();
     saving = null;
@@ -356,7 +328,8 @@
     cb();
   }
   function enter(r) {
-    if (r.route === 'ticket') { renderTicket(); checkTicket(); }
+    if (r.route === 'ticket') { renderDone(); }
+    else if (r.route === 'intro') { renderIntro(); }
     else if (r.route === 'saving') { startSaving(!!r.resend); }
     else if (r.route === 'quiz') { renderQuestion(r.qIndex | 0); }
     else if (r.route === 'info') { renderInfo(''); }
@@ -418,7 +391,7 @@
     var consent = state.consent || {};
     $('field-name').value = info.name || '';
     $('field-org').value = info.organization || '';
-    $('field-phone').value = info.phone || '';
+    $('field-phone').value = Q.formatPhone(info.phone || '');
     $('field-email').value = info.email || '';
     state.stage = 'info'; // routeOnLoad sends stage "info" back here after a reload
     persist();
@@ -431,6 +404,21 @@
   $('info-form').addEventListener('input', function () {
     if (infoErrorCode && infoErrorCode !== 'CONSENT_TEXT_MISSING') { hideInfoError(); }
   });
+  // The phone field hyphenates itself while typing and on paste (an input event covers both). When the edit was in
+  // the middle of the text, the caret is put back after the same number of digits instead of jumping to the end.
+  $('field-phone').addEventListener('input', function () {
+    var el = $('field-phone');
+    var before = el.value;
+    var after = Q.formatPhone(before);
+    if (after === before) { return; }
+    var pos = typeof el.selectionStart === 'number' && el.selectionStart < before.length ? el.selectionStart : -1;
+    var digits = pos < 0 ? 0 : before.slice(0, pos).replace(/\D/g, '').length;
+    el.value = after;
+    if (pos < 0 || typeof el.setSelectionRange !== 'function') { return; }
+    var at = 0;
+    for (var seen = 0; at < after.length && seen < digits; at++) { if (/\d/.test(after.charAt(at))) { seen++; } }
+    el.setSelectionRange(at, at);
+  });
   $('info-form').addEventListener('submit', function (ev) {
     ev.preventDefault();
     var info = { name: $('field-name').value.trim(), organization: $('field-org').value.trim(), phone: $('field-phone').value.trim(), email: $('field-email').value.trim() };
@@ -441,10 +429,23 @@
     state.entryType = 'info';
     state.info = info;
     state.consent = consent;
-    state.stage = 'quiz';
+    state.stage = 'intro'; // routeOnLoad sends stage "intro" to the intro screen, also after a reload
     persist();
     route();
   });
+
+  // ------------------------------------------------------------------ intro
+  function renderIntro() {
+    state.stage = 'intro';
+    persist();
+    show('p-intro');
+  }
+  // Past the intro the stage is "quiz" for good: no later route shows the intro again.
+  $('intro-start').onclick = function () {
+    state.stage = 'quiz';
+    persist();
+    route();
+  };
 
   // ------------------------------------------------------------------ quiz
   var concernBoxes = Array.prototype.slice.call($('p-concern').querySelectorAll('input'));
@@ -580,7 +581,7 @@
   }
   $('q-answer').addEventListener('input', function () { $('q-confirm').disabled = $('q-answer').value.trim() === ''; });
 
-  // A tap locks the answer. The ticket is issued whatever the answer was (decision Q2-A).
+  // A tap locks the answer. The answer stays on this device (it is never sent) and the save follows whatever it was.
   function answer(q, i, value) {
     locked = true;
     state.answers[q.id] = value;
@@ -649,10 +650,6 @@
     }));
   }
   api.onState = function (e) {
-    if (e.action === 'redeem') { // the automatic retries of a redeem are visible to the staff member
-      if (e.state === 'waiting') { staffResult(Q.errorCopy(e.code), 'bad'); }
-      return;
-    }
     if (e.action !== 'submit' || !saving || current !== 'p-saving') { return; }
     saving.max = e.max;
     saving.attempt = e.state === 'waiting' ? e.attempt + 1 : e.attempt; // "waiting" announces the coming retry
@@ -665,17 +662,15 @@
     else { send(); }                                 // after exhaustion: the same body, the same requestId
   };
   function handleResult(r) {
-    if (r.code === 'EVENT_CHANGED') { // the ticket belongs to an earlier event: it was not stored; start over on the landing
+    if (r.code === 'EVENT_CHANGED') { // the ticket belongs to an earlier event: it was not stored; start over on the info form
       try { if (storage) { storage.removeItem(Q.storageKeys(SO).state); } } catch (e) { /* storage blocked: nothing stored */ }
       startOver(Q.freshState(configEventId()));
       showStart();
       return;
     }
-    if (r.ok) {
-      ticketExisting = r.data.existing || '';
-      ticketCheck = '';
+    if (r.ok) { // the server confirmed the save (a repeated phone gets the same answer, shown the same way)
       releaseSaving();
-      renderTicket();
+      renderDone();
       return;
     }
     if (r.action === 'back-to-info') { renderInfo(r.code); return; }
@@ -688,125 +683,10 @@
     showError(r.code, r.message);
   }
 
-  // ------------------------------------------------------------------ ticket, status check, staff redeem
-  function stopClock() { if (clockTimer) { clearInterval(clockTimer); clockTimer = null; } }
-  function tickClock() { $('ticket-clock').textContent = Q.ticketViewModel(state.ticket, Date.now).clockText; }
-  // Draws the stored ticket. The live clock makes a screenshot of the ticket recognisable as one.
-  function paintTicket() {
-    var vm = Q.ticketViewModel(state.ticket, Date.now, { existing: ticketExisting, check: ticketCheck });
-    $('ticket-no').textContent = vm.label;
-    $('ticket-issued').textContent = vm.issuedText;
-    $('ticket-status').textContent = vm.statusText;
-    $('ticket-note').textContent = vm.note;
-    $('ticket-demo').textContent = vm.demoWatermark;
-    $('ticket-demo').hidden = !vm.demo;
-    $('ticket-recheck').textContent = vm.recheckText;
-    $('ticket-recheck').hidden = !vm.showRecheck;
-    $('ticket-slot').classList.toggle('used', vm.redeemed);
-    tickClock();
-  }
-  function renderTicket() {
-    paintTicket();
-    show('p-ticket');
-    stopClock();
-    clockTimer = setInterval(guard(tickClock), 1000);
-  }
-  // Merges a ticket from the server into the stored one. A slow answer never turns a used ticket back to unused.
-  function applyServerTicket(fresh) {
-    var old = state.ticket || {};
-    var merged = Object.assign({}, old, fresh);
-    if (old.redeemed === true && fresh.redeemed !== true) {
-      merged.redeemed = true;
-      merged.redeemedAt = old.redeemedAt;
-      merged.redeemedLabel = old.redeemedLabel;
-    }
-    state.ticket = merged;
-    persist();
-  }
-  // One status call after a reload (the stored status shows meanwhile). A preview ticket exists only on this device,
-  // so it is checked locally: its stored status is the truth.
-  function checkTicket() {
-    var t = state.ticket;
-    if (!t || t.demo) { ticketCheck = ''; paintTicket(); return; }
-    ticketCheck = 'checking';
-    paintTicket();
-    api.ticket(t.ticketId, t.ticketToken).then(guard(function (r) {
-      if (r.code === 'IN_FLIGHT') { return; }
-      if (!state || !state.ticket || state.ticket.ticketId !== t.ticketId) { return; } // the page moved on meanwhile
-      if (r.ok && r.data && r.data.ticket) { ticketCheck = ''; applyServerTicket(r.data.ticket); }
-      else if (r.code === 'TICKET_NOT_FOUND') { ticketCheck = 'not_found'; }
-      else { ticketCheck = 'unreachable'; }
-      paintTicket();
-    }));
-  }
-  $('ticket-recheck').onclick = checkTicket;
-
-  function staffResult(text, kind) {
-    $('staff-result').textContent = text;
-    $('staff-result').className = 'staff-result' + (kind ? ' ' + kind : '');
-  }
-  $('staff-toggle').onclick = function () {
-    var open = $('staff-panel').hidden;
-    $('staff-panel').hidden = !open;
-    $('staff-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) { $('staff-pin').focus(); }
-  };
-  // A preview ticket is redeemed on this device only (the in-memory demo api forgets tickets on reload).
-  function demoRedeem(t) {
-    var d = new Date(Date.now());
-    var ticket = Object.assign({}, t);
-    var first = t.redeemed !== true;
-    if (first) {
-      ticket.redeemed = true;
-      ticket.redeemedAt = d.toISOString();
-      ticket.redeemedLabel = (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
-    }
-    return { ok: true, demo: true, data: { status: first ? 'REDEEMED' : 'ALREADY_REDEEMED', ticket: ticket } };
-  }
-  var REDEEM_GAVE_UP = "연결이 불안정해요. '룰렛 완료 처리'를 다시 눌러 주세요.";
-  function finishRedeem(r) {
-    var good = r.ok && r.data && r.data.ticket && (r.data.status === 'REDEEMED' || r.data.status === 'ALREADY_REDEEMED');
-    if (r.ok && !good) { r = { ok: false, code: 'BAD_RESPONSE', retryable: true, message: Q.errorCopy('BAD_RESPONSE') }; }
-    if (!r.ok) {
-      if (!r.retryable) { redeemReq = ''; } // definitive refusal; a retryable failure keeps the requestId for the next tap
-      if (r.code === 'TICKET_NOT_FOUND') { ticketCheck = 'not_found'; paintTicket(); }
-      // Out of automatic attempts: the K1 retry copy promises more retries, so say what the staff member should do.
-      staffResult(r.retryable ? REDEEM_GAVE_UP : (r.message || Q.errorCopy(r.code)), 'bad');
-      return;
-    }
-    redeemReq = ''; // REDEEMED and ALREADY_REDEEMED are both final
-    applyServerTicket(r.data.ticket);
-    ticketCheck = '';
-    paintTicket();
-    if (r.demo) {
-      staffResult(Q.COPY.demoWatermark, 'bad'); // a preview ticket never tells the staff to spin the roulette
-    } else if (r.data.status === 'REDEEMED') {
-      staffResult('처리 완료. 룰렛을 돌려 주세요', 'ok');
-    } else {
-      var at = Q.ticketViewModel(state.ticket, Date.now).redeemedLabel;
-      staffResult('이미 사용된 응모권이에요' + (at ? ' (' + at + ')' : '') + '. 룰렛을 다시 돌리지 마세요.', 'bad');
-    }
-  }
-  $('staff-panel').addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    if (redeeming || !state || !state.ticket) { return; }
-    var pin = $('staff-pin').value;
-    $('staff-pin').value = ''; // cleared on every attempt; the PIN lives only in this variable and the request body
-    if (pin.length < 4 || pin.length > 12) { staffResult(Q.errorCopy('PIN_INVALID'), 'bad'); return; } // not worth a limiter attempt
-    var t = state.ticket;
-    if (!redeemReq) { redeemReq = Q.newId(); }
-    if (t.demo) { finishRedeem(demoRedeem(t)); return; }
-    redeeming = true;
-    $('staff-redeem').disabled = true;
-    staffResult('', '');
-    api.redeem({ ticketId: t.ticketId, ticketToken: t.ticketToken, pin: pin, requestId: redeemReq }).then(guard(function (r) {
-      redeeming = false;
-      $('staff-redeem').disabled = false;
-      if (r.code === 'IN_FLIGHT') { return; }
-      if (!state || !state.ticket || state.ticket.ticketId !== t.ticketId) { return; } // the page moved on meanwhile
-      finishRedeem(r);
-    }));
-  });
+  // ------------------------------------------------------------------ done
+  // The final screen is static: it only exists after the server confirmed the save (or after a reload that finds the
+  // stored confirmation). Nothing is asked of the server here.
+  function renderDone() { show('p-ticket'); }
 
   // ------------------------------------------------------------------ start
   $('demo-badge').hidden = !demo;
