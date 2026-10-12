@@ -513,7 +513,11 @@
       v: 3, savedAt: nowMs, eventId: s.eventId || '', stage: s.stage || 'landing', entryType: s.entryType || '',
       answers: isObject(s.answers) ? s.answers : {}, qIndex: s.qIndex | 0
     };
-    if (s.introDone === true) { out.introDone = true; } // the intro screen was passed: it is never shown again
+    if (s.introDone === true) { out.introDone = true; } // the intro screen was passed: the info form leads on past it
+    if (isObject(s.drafts)) { // typed but unconfirmed quiz answers survive Back and a reload (local only, never sent)
+      out.drafts = {};
+      Object.keys(s.drafts).forEach(function (k) { if (typeof s.drafts[k] === 'string') { out.drafts[k] = s.drafts[k].slice(0, 40); } });
+    }
     if (isObject(s.consent)) {
       out.consent = { required: s.consent.required === true, marketing: s.consent.marketing === true, version: s.consent.version || '' };
     }
@@ -554,7 +558,7 @@
   function introPassed(state) {
     var s = state || {};
     if (s.introDone === true || isObject(s.ticket) || isObject(s.pending)) { return true; }
-    if (s.stage === 'quiz' || s.stage === 'saving' || s.stage === 'ticket') { return true; }
+    if (['quiz', 'concern', 'concern-note', 'question', 'question-note', 'saving', 'ticket'].indexOf(s.stage) !== -1) { return true; }
     return !isBlank(isObject(s.answers) ? s.answers.concern : '');
   }
 
@@ -615,17 +619,23 @@
   // ---------------------------------------------------------------- reload routing
   // content (optional) lets the quiz resume at the first unanswered question, or at the last question when all
   // are answered but nothing was sent (the page shows the locked answer and the "participate" button).
-  // The page must set state.stage when it moves between steps: stage "info" always routes to the info step and stage
-  // "intro" (info given, start button not yet pressed) to the intro screen. A stored state without a stage "intro"
-  // (older builds, or any progress past the intro) is never sent back to it.
+  // The page must set state.stage when it moves between steps: stage "info" always routes to the info step, stage
+  // "intro" to the intro screen (first pass, or Back from the concern step), and the stages concern, concern-note,
+  // question and question-note to {route: 'step'}. A state of the previous build (stage "quiz", or none) is routed by its
+  // answers; the page then shows the note screen for an answered question.
   function routeOnLoad(state, content) {
     if (!state) { return { route: 'landing' }; }
     if (isObject(state.ticket)) { return { route: 'ticket' }; }
     if (isObject(state.pending) && state.pending.requestId && isObject(state.pending.body)) { return { route: 'saving', resend: true }; }
-    if (state.stage === 'intro' && state.introDone !== true) { return isObject(state.info) ? { route: 'intro' } : { route: 'info' }; }
+    if (state.stage === 'intro') { return isObject(state.info) ? { route: 'intro' } : { route: 'info' }; }
     if (state.stage === 'info') { return { route: 'info' }; }
     if (state.entryType !== 'card' && state.entryType !== 'info') { return { route: 'landing' }; }
     if (state.entryType === 'info' && !isObject(state.info)) { return { route: 'info' }; }
+    // The screens after the intro keep their own stage; the page maps it to a screen once the questions are known.
+    // Stage "quiz" (previous build) falls through to the answer-based routing below.
+    if (['concern', 'concern-note', 'question', 'question-note'].indexOf(state.stage) !== -1) {
+      return { route: 'step', step: state.stage, qIndex: state.qIndex | 0 };
+    }
     var answers = state.answers || {};
     if (content && Array.isArray(content.questions) && content.questions.length > 0) {
       for (var i = 0; i < content.questions.length; i++) {

@@ -56,7 +56,6 @@
   .concern { text-align: center; }
   .concern label { text-align: left; padding: 14px 16px; border: 1px solid var(--line-2); border-radius: 14px; background: #fff; font-size: 16px; cursor: pointer; }
   .concern .picked { border-color: var(--accent); background: var(--surface); }
-  .concern-hint { margin: 14px 0; padding: 12px 14px; border-radius: 12px; background: var(--surface); font-size: 15px; font-weight: 600; }
   .count { color: var(--muted); font-size: 13px; text-align: center; }
   .hint { margin: 0 0 16px; font-size: 15px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
   .hint b { margin-right: 6px; }
@@ -71,7 +70,8 @@
   .abimg img { width: 100%; height: 100%; object-fit: contain; }
   .badge { display: inline-block; margin-top: 8px; padding: 3px 14px; border-radius: 99px; background: var(--surface); font-weight: 700; font-size: 14px; }
   .cap { display: block; font-size: 13px; color: var(--muted); margin-top: 6px; }
-  .explain { background: var(--surface); border-radius: 14px; padding: 16px; margin-bottom: 18px; font-size: 15px; white-space: pre-line; }
+  /* Back control at the top-left of every step after the info form. */
+  .back { display: block; margin: -10px 0 6px -6px; padding: 8px 6px; background: none; border: 0; color: var(--muted); font-size: 15px; font-weight: 600; text-align: left; cursor: pointer; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .text-answer { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--line-2); background: #fff; color: var(--text); margin-bottom: 14px; text-align: center; }
   #p-quiz { text-align: center; }
@@ -84,9 +84,14 @@
     @keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   }
   /* Event intro: no page header, plain white page, every text #091550 and centered (team design). */
-  .intro { text-align: center; color: #091550; padding-top: 14vh; }
+  .intro { text-align: center; color: #091550; }
+  .intro .back { color: #091550; }
+  .intro-body { padding-top: 12vh; }
   .intro h2 { font-size: 28px; font-weight: 800; line-height: 1.35; margin: 0 0 28px; }
-  .intro .step { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 0 0 14px; font-size: 18px; font-weight: 600; }
+  .intro h2.note-text { font-size: 16px; line-height: 1.5; font-weight: 700; margin: 0 0 36px; }
+  /* The two numbered rows are one left-aligned block (circles in one column, texts at one left edge), centered as a whole. */
+  .intro .steps { width: fit-content; margin: 0 auto; text-align: left; }
+  .intro .step { display: flex; justify-content: flex-start; align-items: center; gap: 12px; margin: 0 0 14px; font-size: 18px; font-weight: 600; }
   .intro .num { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #091550; color: #091550; font-size: 16px; font-weight: 800; line-height: 26px; text-align: center; }
   .intro .lead { margin: 22px 0 36px; font-size: 15px; }
   /* Final screen: the team's "participation complete" design (navy text on the blue gradient). */
@@ -123,16 +128,22 @@
       <p class="note">입력해주신 정보는 명함 응모와 동일하게 처리됩니다. 이벤트 참여 및 경품 추첨에 활용됩니다.</p>
     </form>
   </section>
-  <!-- 2. Event intro: shown once after the info form (stage "intro" is stored, so a reload returns here until the button is pressed). -->
+  <!-- 2. Event intro: stage "intro" is stored, so a reload returns here until the start button is pressed. -->
   <section class="page intro" id="p-intro" hidden>
-    <h2>딱 2문항이면 끝나요.</h2>
-    <p class="step"><span class="num">1</span> <span>요즘 가장 가까운 고민 고르기</span></p>
-    <p class="step"><span class="num">2</span> <span>빈칸에 들어갈 단어 맞히기</span></p>
-    <p class="lead">힌트가 있어서 어렵지 않아요 · 30초 소요</p>
-    <button type="button" class="cta" id="intro-start" data-testid="intro-start">시작하기</button>
+    <button type="button" class="back" id="back-intro" data-testid="back">이전으로</button>
+    <div class="intro-body">
+      <h2>딱 2문항이면 끝나요.</h2>
+      <div class="steps">
+        <p class="step"><span class="num">1</span> <span>요즘 가장 가까운 고민 고르기</span></p>
+        <p class="step"><span class="num">2</span> <span>빈칸에 들어갈 단어 맞히기</span></p>
+      </div>
+      <p class="lead">힌트가 있어서 어렵지 않아요 · 30초 소요</p>
+      <button type="button" class="cta" id="intro-start" data-testid="intro-start">시작하기</button>
+    </div>
   </section>
   <!-- 3. Concern choice (several may be picked); the selection travels as the answer "concern". -->
   <section class="page concern" id="p-concern" hidden>
+    <button type="button" class="back" id="back-concern" data-testid="back">이전으로</button>
     <h1>Valen Lucky Quiz</h1>
     <h2>당신의 브랜드 또는 제품의 고민을 선택해주세요.</h2>
     <p class="sub">(중복체크 가능)</p>
@@ -141,11 +152,19 @@
     <label><input type="checkbox" data-testid="concern-option" value="광고 효율 개선이 필요하다"> 광고 효율 개선이 필요하다</label>
     <label><input type="checkbox" data-testid="concern-option" value="크리에이터 협업을 검토 중이다"> 크리에이터 협업을 검토 중이다</label>
     <label><input type="checkbox" data-testid="concern-option" value="해당하지 않지만, 발렌을 알고 싶다"> 해당하지 않지만, 발렌을 알고 싶다</label>
-    <p class="concern-hint" id="concern-hint" role="status" hidden>오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다</p>
     <button type="button" class="cta" id="concern-next" data-testid="concern-next" disabled>다음으로</button>
+  </section>
+  <!-- 3b. Concern note: the 17:00 line on a screen of its own, same look as the intro. -->
+  <section class="page intro" id="p-concern-note" hidden>
+    <button type="button" class="back" id="back-concern-note" data-testid="back">이전으로</button>
+    <div class="intro-body">
+      <h2 class="note-text">오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다</h2>
+      <button type="button" class="cta" id="concern-note-next" data-testid="concern-note-next">다음으로</button>
+    </div>
   </section>
   <!-- 4. Quiz (the question comes from the Sheet or from defaults.js); the answer stays on the device -->
   <section class="page" id="p-quiz" hidden>
+    <button type="button" class="back" id="back-quiz" data-testid="back">이전으로</button>
     <h1>Valen Lucky Quiz</h1>
     <div class="count" id="q-count" hidden></div>
     <h2 id="q-title" data-testid="q-title"></h2>
@@ -156,8 +175,14 @@
       <input class="text-answer" id="q-answer" data-testid="q-answer" placeholder="정답을 입력해 주세요" maxlength="40" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="정답">
       <button type="submit" class="cta" id="q-confirm" disabled>확인</button>
     </form>
-    <div class="explain" id="q-feedback" role="status" hidden></div>
-    <button type="button" class="cta" id="q-next" data-testid="q-next" hidden>참여 완료</button>
+  </section>
+  <!-- 4b. Quiz note: only the explanation, same look as the intro. -->
+  <section class="page intro" id="p-quiz-note" hidden>
+    <button type="button" class="back" id="back-quiz-note" data-testid="back">이전으로</button>
+    <div class="intro-body">
+      <h2 class="note-text" id="qn-text" data-testid="qn-text"></h2>
+      <button type="button" class="cta" id="q-next" data-testid="q-next">참여 완료</button>
+    </div>
   </section>
   <!-- Waiting for config (at most 5 s, then the embedded question is used) -->
   <section class="page" id="p-wait" hidden><h2 class="sr-only">Valen Lucky Quiz</h2><div class="spinner"></div></section>
@@ -182,8 +207,8 @@
     </div>
   </section>
 </main>
-<script src="defaults.js?v=2026-10-12.1"></script>
-<script src="quiz-core.js?v=2026-10-12.1"></script>
+<script src="defaults.js?v=2026-10-12.2"></script>
+<script src="quiz-core.js?v=2026-10-12.2"></script>
 <script>
 // Safety net, registered before the app script so even a syntax error in it ends in a message, not a blank page.
 (function () {
@@ -217,7 +242,7 @@
   var T0 = Date.now();
   var CONFIG_WAIT_MS = 5000;   // the quiz waits at most this long for config, then uses the embedded question
   var IMAGE_WAIT_MS = 8000;    // an A/B image that has not loaded by now becomes a caption box
-  var PAGES = ['p-info', 'p-intro', 'p-concern', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'];
+  var PAGES = ['p-info', 'p-intro', 'p-concern', 'p-concern-note', 'p-quiz', 'p-quiz-note', 'p-wait', 'p-saving', 'p-error', 'p-ticket'];
   // The concern choice is the first "question": it is stored and sent like any answer (id "concern", labels joined by " | ").
   var CONCERN_Q = { id: 'concern', type: 'concern' };
 
@@ -236,7 +261,6 @@
   var waiter = null;        // callback parked while the config is awaited
   var current = '';         // id of the visible page
   var infoErrorCode = '';
-  var locked = false;       // the current question has been answered
   var saving = null;        // {body, t0, attempt, max, exhausted, failedOnce, inFlight, tick}
   function $(id) { return document.getElementById(id); }
   // An async callback that throws must not leave a half-drawn page: show the message (a ticket stays visible).
@@ -331,7 +355,7 @@
     if (r.route === 'ticket') { renderDone(); }
     else if (r.route === 'intro') { renderIntro(); }
     else if (r.route === 'saving') { startSaving(!!r.resend); }
-    else if (r.route === 'quiz') { renderQuestion(r.qIndex | 0); }
+    else if (r.route === 'quiz' || r.route === 'step') { enterStep(r); }
     else if (r.route === 'info') { renderInfo(''); }
     else { showStart(); }
   }
@@ -351,10 +375,10 @@
   function route() {
     var r = Q.routeOnLoad(state, null);
     // A stored pending request is replayed only after config is known (at most 5 s): it may belong to another event.
-    if (r.route === 'quiz' || r.route === 'saving' || r.route === 'intro') {
+    if (r.route === 'quiz' || r.route === 'step' || r.route === 'saving' || r.route === 'intro') {
       whenContent(function () {
         // Stored progress that predates the current consent text or the four required fields goes back to the form.
-        if ((r.route === 'quiz' || r.route === 'intro') && infoOutdated()) { renderInfo(''); return; }
+        if (r.route !== 'saving' && infoOutdated()) { renderInfo(''); return; }
         enter(Q.routeOnLoad(state, content));
       });
     }
@@ -449,9 +473,9 @@
     state.entryType = 'info';
     state.info = info;
     state.consent = consent;
-    // The intro is shown once: routeOnLoad sends stage "intro" there (also after a reload), but a person who already
-    // passed it (introDone, also derived from older stored progress) goes straight on after re-entering the info.
-    state.stage = state.introDone === true ? 'quiz' : 'intro';
+    // Forward from the info form is the intro, unless it was already passed (introDone, also derived from older stored
+    // progress): then the concern step. Back from the concern step shows the intro again whatever the flag says.
+    state.stage = state.introDone === true ? 'concern' : 'intro';
     persist();
     route();
   });
@@ -462,93 +486,79 @@
     persist();
     show('p-intro');
   }
-  // Past the intro: the stored flag keeps it from coming back, even after a trip to the info form.
+  // Past the intro: the stored flag keeps it from coming back after the info form; pressing Back from the concern
+  // step still shows it (see goBack).
   $('intro-start').onclick = function () {
     state.introDone = true;
-    state.stage = 'quiz';
+    state.stage = 'concern';
     persist();
     route();
   };
 
-  // ------------------------------------------------------------------ quiz
+  // ------------------------------------------------------------------ steps after the intro
+  // Fixed sequence: info, intro, concern, concern note, then for every quiz question the question and its note.
+  // Stored stages: intro, concern, concern-note, question, question-note (+ qIndex). A state written by the build before
+  // this one has stage "quiz": it is mapped to a screen from the answers (see enter).
   var concernBoxes = Array.prototype.slice.call($('p-concern').querySelectorAll('input'));
+  var currentQ = null;      // the quiz question on screen (its draft is kept while typing)
   // Picked labels live in state.answers.concern, so a reload keeps them and the submit body carries them.
   function syncConcern() {
     var picked = [];
     concernBoxes.forEach(function (b) { b.parentNode.classList.toggle('picked', b.checked); if (b.checked) { picked.push(b.value); } });
     if (picked.length) { state.answers.concern = picked.join(' | '); } else { delete state.answers.concern; }
     persist();
-    $('concern-hint').hidden = !picked.length;
     $('concern-next').disabled = !picked.length;
   }
   concernBoxes.forEach(function (b) { b.addEventListener('change', syncConcern); });
-  function renderConcern(i) {
-    state.stage = 'quiz';
-    state.qIndex = i;
+  function renderConcern() {
+    state.stage = 'concern';
+    state.qIndex = 0;
     var picked = blank(state.answers.concern) ? [] : state.answers.concern.split(' | ');
     concernBoxes.forEach(function (b) { b.checked = picked.indexOf(b.value) !== -1; });
     show('p-concern');
     syncConcern();
   }
-  $('concern-next').onclick = function () { renderQuestion((state.qIndex | 0) + 1); };
+  $('concern-next').onclick = function () { renderConcernNote(); };
+  // The 17:00 line has a screen of its own after the concern step.
+  function renderConcernNote() {
+    state.stage = 'concern-note';
+    state.qIndex = 0;
+    persist();
+    show('p-concern-note');
+  }
+  $('concern-note-next').onclick = function () { renderQuestion(1); };
+
   function renderQuestion(i) {
-    var qs = content.questions;
-    var q = qs[i];
-    if (q.type === 'concern') { renderConcern(i); return; }
-    locked = false;
-    state.stage = 'quiz';
+    var q = content.questions[i];
+    currentQ = q;
+    state.stage = 'question';
     state.qIndex = i;
     persist();
     show('p-quiz');
-    var real = qs.length - 1; // the concern step does not count
+    var real = content.questions.length - 1; // the concern step does not count
     $('q-count').hidden = real < 2;
     $('q-count').textContent = i + ' / ' + real;
     $('q-title').textContent = q.title;
     $('q-hint').hidden = blank(q.hint);
     $('q-hint-text').textContent = q.hint || '';
-    $('q-feedback').hidden = true;
-    $('q-next').hidden = true;
-    $('q-next').disabled = false;
-    $('q-next').textContent = i === qs.length - 1 ? '참여 완료' : '다음으로';
     $('q-choice').hidden = true; $('q-ab').hidden = true; $('q-text').hidden = true;
-    if (q.type === 'choice') { buildChoice(q, i); }
-    else if (q.type === 'ab') { buildAb(q, i); }
-    else { buildText(q, i); }
-    if (!blank(state.answers[q.id])) { restoreAnswer(q, state.answers[q.id]); }
+    if (q.type === 'choice') { buildChoice(q); }
+    else if (q.type === 'ab') { buildAb(q); }
+    else { buildText(q); }
   }
-  // A question already answered (stored progress) comes back locked, with its feedback and the next button.
-  function restoreAnswer(q, value) {
-    locked = true;
-    var group = q.type === 'choice' ? $('q-choice') : $('q-ab');
-    if (q.type === 'choice' || q.type === 'ab') {
-      Array.prototype.forEach.call(group.querySelectorAll('button'), function (b) {
-        b.disabled = true;
-        if ((q.type === 'choice' ? b.textContent : b.getAttribute('data-side')) === value) { b.classList.add('sel'); }
-      });
-    } else {
-      $('q-answer').value = value;
-      $('q-answer').readOnly = true;
-      $('q-confirm').hidden = true;
-    }
-    showFeedback(q);
-  }
-  function buildChoice(q, i) {
+  // The stored answer (or the unconfirmed draft) is shown again, editable: going back never locks anything.
+  function buildChoice(q) {
     var box = $('q-choice');
     box.innerHTML = '';
     box.hidden = false;
     (q.options || []).forEach(function (text) {
       var b = document.createElement('button');
-      b.type = 'button'; b.className = 'opt'; b.textContent = text; b.setAttribute('data-testid', 'q-option');
-      b.onclick = function () {
-        if (locked) { return; }
-        b.classList.add('sel');
-        Array.prototype.forEach.call(box.querySelectorAll('button'), function (x) { x.disabled = true; });
-        answer(q, i, text);
-      };
+      b.type = 'button'; b.className = 'opt' + (state.answers[q.id] === text ? ' sel' : ''); b.textContent = text; b.setAttribute('data-testid', 'q-option');
+      b.onclick = function () { answer(q, text); };
       box.appendChild(b);
     });
   }
-  function buildAb(q, i) {
+  function buildAb(q) {
     var grid = $('q-ab');
     grid.innerHTML = '';
     grid.hidden = false;
@@ -556,7 +566,7 @@
       var url = (side === 'A' ? q.imageA : q.imageB) || '';
       var cap = (side === 'A' ? q.captionA : q.captionB) || '';
       var card = document.createElement('button');
-      card.type = 'button'; card.className = 'abcard'; card.setAttribute('data-testid', 'q-option'); card.setAttribute('data-side', side);
+      card.type = 'button'; card.className = 'abcard' + (state.answers[q.id] === side ? ' sel' : ''); card.setAttribute('data-testid', 'q-option'); card.setAttribute('data-side', side);
       var box = document.createElement('div');
       box.className = 'abimg';
       var loaded = false;
@@ -576,47 +586,51 @@
       var badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = side;
       card.appendChild(box); card.appendChild(badge);
       if (cap) { var c = document.createElement('span'); c.className = 'cap'; c.textContent = cap; card.appendChild(c); }
-      card.onclick = function () {
-        if (locked) { return; }
-        card.classList.add('sel');
-        Array.prototype.forEach.call(grid.querySelectorAll('button'), function (x) { x.disabled = true; });
-        answer(q, i, side);
-      };
+      card.onclick = function () { answer(q, side); };
       grid.appendChild(card);
     });
   }
-  function buildText(q, i) {
+  function buildText(q) {
     var form = $('q-text');
     var input = $('q-answer');
     form.hidden = false;
-    input.value = '';
-    input.readOnly = false;
-    $('q-confirm').disabled = true;
-    $('q-confirm').hidden = false;
+    var drafts = isObjectLike(state.drafts) ? state.drafts : {};
+    input.value = !blank(state.answers[q.id]) ? state.answers[q.id] : (drafts[q.id] || '');
+    $('q-confirm').disabled = blank(input.value);
     form.onsubmit = function (ev) {
       ev.preventDefault();
       var v = input.value.trim();
-      if (locked || v === '') { return; }
-      input.readOnly = true;
-      $('q-confirm').hidden = true;
-      answer(q, i, v);
+      if (v === '') { return; }
+      answer(q, v);
     };
   }
-  $('q-answer').addEventListener('input', function () { $('q-confirm').disabled = $('q-answer').value.trim() === ''; });
-
-  // A tap locks the answer. The answer stays on this device (it is never sent) and the save follows whatever it was.
-  function answer(q, i, value) {
-    locked = true;
-    state.answers[q.id] = value;
+  function isObjectLike(v) { return v !== null && typeof v === 'object'; }
+  // The typed text survives Back and a reload until it is confirmed.
+  $('q-answer').addEventListener('input', function () {
+    var v = $('q-answer').value;
+    $('q-confirm').disabled = blank(v);
+    if (!currentQ) { return; }
+    if (!isObjectLike(state.drafts)) { state.drafts = {}; }
+    state.drafts[currentQ.id] = v;
     persist();
-    showFeedback(q);
+  });
+
+  // Confirming an answer keeps it on this device only (it is never sent) and opens the note screen.
+  function answer(q, value) {
+    state.answers[q.id] = value;
+    if (isObjectLike(state.drafts)) { delete state.drafts[q.id]; }
+    renderNote((state.qIndex | 0));
   }
   // After an answer only the explanation shows (no right/wrong line; grading is recorded on the server).
-  function showFeedback(q) {
-    $('q-feedback').textContent = q.explanation || '';
-    $('q-feedback').hidden = blank(q.explanation);
-    $('q-next').hidden = false;
-    $('q-next').focus();
+  function renderNote(i) {
+    var q = content.questions[i];
+    state.stage = 'question-note';
+    state.qIndex = i;
+    persist();
+    $('qn-text').textContent = q.explanation || '';
+    $('q-next').disabled = false;
+    $('q-next').textContent = i === content.questions.length - 1 ? '참여 완료' : '다음으로';
+    show('p-quiz-note');
   }
   $('q-next').onclick = function () {
     var next = (state.qIndex | 0) + 1;
@@ -624,6 +638,34 @@
     $('q-next').disabled = true; // a double tap must not start two saves
     startSaving(false);
   };
+
+  // Which screen a stored stage (or a state of the previous build) stands for. Needs the content.
+  function enterStep(r) {
+    var qs = content.questions;
+    var i = r.qIndex | 0;
+    if (r.route === 'quiz') { // previous build: stage "quiz", the screen follows from the answers
+      if (i < 1) { renderConcern(); return; }
+      if (i >= qs.length) { i = qs.length - 1; }
+      if (!blank(state.answers[qs[i].id])) { renderNote(i); } else { renderQuestion(i); }
+      return;
+    }
+    if (r.step === 'concern' || blank(state.answers.concern)) { renderConcern(); return; }
+    if (r.step === 'concern-note') { renderConcernNote(); return; }
+    if (i < 1 || i >= qs.length) { i = 1; } // the questions changed since the state was stored
+    if (r.step === 'question-note' && !blank(state.answers[qs[i].id])) { renderNote(i); } else { renderQuestion(i); }
+  }
+
+  // ------------------------------------------------------------------ Back
+  // One screen back in the fixed sequence; everything entered stays (info values, consent, picks, answers, drafts).
+  function goBack() {
+    var i = state.qIndex | 0;
+    if (current === 'p-intro') { renderInfo(''); }
+    else if (current === 'p-concern') { renderIntro(); }
+    else if (current === 'p-concern-note') { renderConcern(); }
+    else if (current === 'p-quiz') { if (i <= 1) { renderConcernNote(); } else { renderNote(i - 1); } }
+    else if (current === 'p-quiz-note') { renderQuestion(i); }
+  }
+  ['back-intro', 'back-concern', 'back-concern-note', 'back-quiz', 'back-quiz-note'].forEach(function (id) { $(id).onclick = goBack; });
 
   // ------------------------------------------------------------------ saving
   function renderSaving() {

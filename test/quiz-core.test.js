@@ -596,8 +596,8 @@ test('F1 config: server content only when contentReady with questions, else embe
     '- 귀하는 개인정보 수집 및 이용에 대한 동의를 거부할 권리가 있습니다. 단, 필수 항목 동의 거부 시 이벤트 참여 및 경품 수령이 제한됩니다.'
   ].join(String.fromCharCode(10)));
   assert.strictEqual(emb.consent.version, 'a-day-2026-v3', 'the consent version is v3 (C28)');
-  assert.strictEqual(DEFAULTS.build, '2026-10-12.1', 'the build id (C28)');
-  assert.strictEqual(emb.questions[0].explanation, '80개 브랜드 데이터 기반으로 쌓은 Insight 와 Valen Agent 를 오후 5시에서 보실 수 있습니다.');
+  assert.strictEqual(DEFAULTS.build, '2026-10-12.2', 'the build id (C29)');
+  assert.strictEqual(emb.questions[0].explanation, '80개 브랜드 데이터 기반으로 쌓은 Insight 와' + String.fromCharCode(10) + 'Valen Agent 를 오후 5시에서 보실 수 있습니다.', 'a line break after "Insight 와" (C29)');
   assert.strictEqual(emb.questions.length, 1);
   assert.strictEqual(emb.questions[0].type, 'text');
   assert.deepStrictEqual(emb.questions[0].accepted, ['차별화']);
@@ -655,8 +655,35 @@ test('C28 storage: the introDone flag is stored, and older progress past the int
   });
   assert.strictEqual(QC.introPassed(null), false);
   assert.strictEqual(QC.introPassed({ introDone: true }), true);
-  // the flag wins over a stage that says intro
-  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'intro', introDone: true, info, answers: {}, qIndex: 0 }), { route: 'quiz', qIndex: 0 });
+  // Back from the concern step shows the intro although it was passed: the stage decides, the flag only steers the info form
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'intro', introDone: true, info, answers: {}, qIndex: 0 }), { route: 'intro' });
+});
+
+test('C29 route: the new stages route to {step}; a state of the previous build (stage quiz) keeps its answer-based route', () => {
+  const info = { name: 'n', phone: '010-0000-0001' };
+  const content = { questions: [{ id: 'concern' }, { id: 'q1' }] };
+  ['concern', 'concern-note', 'question', 'question-note'].forEach((stage) => {
+    assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage, info, answers: { concern: 'a' }, qIndex: 1 }), { route: 'step', step: stage, qIndex: 1 }, stage);
+    assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage, info, answers: { concern: 'a' }, qIndex: 1 }, content), { route: 'step', step: stage, qIndex: 1 }, stage + ' with content');
+    assert.strictEqual(QC.introPassed({ stage, answers: {} }), true, stage + ' is past the intro');
+  });
+  // pending, ticket and a missing info still win
+  assert.strictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'question-note', info, answers: {}, ticket: TICKET }).route, 'ticket');
+  assert.strictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'concern', answers: {} }).route, 'info');
+  // previous build: stage quiz stays {route: quiz}; the page shows the note screen for an answered last question
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'quiz', info, answers: { concern: 'a' }, qIndex: 1 }, content), { route: 'quiz', qIndex: 1 });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'quiz', info, answers: { concern: 'a', q1: 'x' }, qIndex: 1 }, content), { route: 'quiz', qIndex: 1 });
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'quiz', info, answers: {}, qIndex: 0 }, content), { route: 'quiz', qIndex: 0 });
+});
+
+test('C29 storage: unconfirmed quiz drafts are stored as short strings only', () => {
+  const s = memStorage();
+  const T = 1712345678901;
+  QC.saveState(s, { eventId: 'a-day-2026', stage: 'question', entryType: 'info', answers: {}, drafts: { q1: 'x'.repeat(60), q2: 5, q3: '차별' } }, T);
+  const stored = JSON.parse(s.getItem(QC.STORAGE_KEYS.state));
+  assert.deepStrictEqual(stored.drafts, { q1: 'x'.repeat(40), q3: '차별' });
+  QC.saveState(s, { eventId: 'a-day-2026', stage: 'question', entryType: 'info', answers: {} }, T);
+  assert.strictEqual(JSON.parse(s.getItem(QC.STORAGE_KEYS.state)).drafts, undefined);
 });
 
 test('C28 route: stage intro returns to the intro; any state past it (or an older one without it) is never sent back', () => {

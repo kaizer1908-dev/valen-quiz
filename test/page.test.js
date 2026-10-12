@@ -223,7 +223,7 @@ test('C28 page: the final screen has only the pill, gift, thanks, show-the-scree
   assert.ok(/\.ticket \.gift \{ width: 72%; max-width: 300px;/.test(html));
 });
 
-test('C28 page: assets are the new transparent WebP files with the declared sizes; build id and ?v= are 2026-10-12.1', () => {
+test('C28 page: assets are the new transparent WebP files with the declared sizes; build id and ?v= are 2026-10-12.2', () => {
   function webpInfo(file) {
     const b = fs.readFileSync(path.join(ROOT, 'assets', file));
     assert.strictEqual(b.toString('latin1', 0, 4), 'RIFF');
@@ -236,8 +236,8 @@ test('C28 page: assets are the new transparent WebP files with the declared size
   }
   assert.deepStrictEqual(webpInfo('gift.webp'), { w: 720, h: 720, alpha: true });
   assert.deepStrictEqual(webpInfo('valen-logo.webp'), { w: 400, h: 120, alpha: true });
-  assert.strictEqual(DEFAULTS.build, '2026-10-12.1');
-  assert.ok(html.includes('<script src="defaults.js?v=2026-10-12.1"></script>') && html.includes('<script src="quiz-core.js?v=2026-10-12.1"></script>'));
+  assert.strictEqual(DEFAULTS.build, '2026-10-12.2');
+  assert.ok(html.includes('<script src="defaults.js?v=2026-10-12.2"></script>') && html.includes('<script src="quiz-core.js?v=2026-10-12.2"></script>'));
 });
 
 // ============================================================================================ fake DOM
@@ -377,7 +377,7 @@ function boot(opts) {
     check(el, v) { el.checked = v; fireEl(el, 'input'); fireEl(el, 'change'); },
     fireWin(type, ev) { (winListeners[type] || []).forEach((fn) => fn(ev)); },
     vis(id) { return byId[id].visible; },
-    page() { return ['p-info', 'p-intro', 'p-concern', 'p-quiz', 'p-wait', 'p-saving', 'p-error', 'p-ticket'].filter((p) => byId[p].visible); },
+    page() { return ['p-info', 'p-intro', 'p-concern', 'p-concern-note', 'p-quiz', 'p-quiz-note', 'p-wait', 'p-saving', 'p-error', 'p-ticket'].filter((p) => byId[p].visible); },
     text(id) { return byId[id].textContent; },
     advance: clock.advance
   };
@@ -427,10 +427,16 @@ async function fillInfo(h, over) {
 const concernBoxes = (h) => h.byId['p-concern'].querySelectorAll('input');
 // The intro screen sits between the info form and the concern step; pressing its button is part of "going on".
 async function startIntro(h) { h.click(h.byId['intro-start']); await settle(); }
-async function pickConcern(h, indexes) {
+// Picks at the concern step and presses its button: the concern note screen follows.
+async function pickConcernOnly(h, indexes) {
   if (h.vis('p-intro')) { await startIntro(h); }
   indexes.forEach((i) => h.check(concernBoxes(h)[i], true));
   h.click(h.byId['concern-next']); await settle();
+}
+// Picks, then goes through the concern note screen to the quiz.
+async function pickConcern(h, indexes) {
+  await pickConcernOnly(h, indexes);
+  h.click(h.byId['concern-note-next']); await settle();
 }
 async function answerQuiz(h, text) {
   h.type(h.byId['q-answer'], text || '정답'); h.click(h.byId['q-confirm']); await settle();
@@ -486,7 +492,7 @@ test('F2r run: the info form needs all four fields and consent with exact messag
   assert.deepStrictEqual(h.page(), ['p-intro'], 'the event intro comes right after the info form');
 });
 
-test('F2r run: the concern step shows its hint only after a pick, sends the labels joined by " | " and survives a reload', async () => {
+test('F2r run: the concern step has no 17:00 line, its button opens the concern note, the picks survive a reload, and the labels are sent joined by " | "', async () => {
   const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {})));
   const local = makeStorage();
   const h = boot({ fetch: f, local });
@@ -496,26 +502,36 @@ test('F2r run: the concern step shows its hint only after a pick, sends the labe
   await startIntro(h);
   assert.deepStrictEqual(h.page(), ['p-concern']);
   assert.strictEqual(h.text('p-concern').indexOf('당신의 브랜드 또는 제품의 고민을 선택해주세요.') !== -1, true, 'the new concern heading');
-  assert.strictEqual(h.byId['concern-hint'].hidden, true);
+  assert.strictEqual(h.byId['concern-hint'], undefined, 'the 17:00 line is not on the concern step any more');
+  assert.strictEqual(h.text('p-concern').indexOf('오후 5시'), -1);
   assert.strictEqual(h.byId['concern-next'].disabled, true);
   const labels = concernBoxes(h).map((b) => b.value);
   assert.deepStrictEqual(labels, ['신제품을 기획 중이다', '해외 진출을 준비 중이다', '광고 효율 개선이 필요하다', '크리에이터 협업을 검토 중이다', '해당하지 않지만, 발렌을 알고 싶다']);
   h.check(concernBoxes(h)[1], true); h.check(concernBoxes(h)[3], true);
-  assert.strictEqual(h.byId['concern-hint'].hidden, false);
-  assert.strictEqual(h.text('concern-hint'), '오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다');
   assert.strictEqual(h.byId['concern-next'].disabled, false);
-  // reload: the picks are stored like any answer, and the quiz is next
+  // reload at the concern step: the same screen with its picks (stored like any answer)
+  const h1 = boot({ fetch: f, local });
+  await settle();
+  assert.deepStrictEqual(h1.page(), ['p-concern'], 'a reload returns to the concern step');
+  assert.deepStrictEqual(concernBoxes(h1).map((b) => b.checked), [false, true, false, true, false]);
+  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).answers.concern, '해외 진출을 준비 중이다 | 크리에이터 협업을 검토 중이다');
+  h1.click(h1.byId['concern-next']); await settle();
+  assert.deepStrictEqual(h1.page(), ['p-concern-note']);
+  assert.strictEqual(h1.text('p-concern-note').indexOf('오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다') !== -1, true);
+  // reload at the concern note
   const h2 = boot({ fetch: f, local });
   await settle();
-  assert.deepStrictEqual(h2.page(), ['p-quiz'], 'a stored pick means the concern step is done');
-  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).answers.concern, '해외 진출을 준비 중이다 | 크리에이터 협업을 검토 중이다');
-  // the quiz: "힌트 :" line, explanation after the answer, CTA "참여 완료", no right/wrong line
+  assert.deepStrictEqual(h2.page(), ['p-concern-note']);
+  h2.click(h2.byId['concern-note-next']); await settle();
+  assert.deepStrictEqual(h2.page(), ['p-quiz']);
+  // the quiz: "힌트 :" line, the explanation on the note screen after the answer, CTA "참여 완료", no right/wrong line
   assert.ok(h2.text('q-hint').indexOf('힌트 :') !== -1);
-  assert.strictEqual(h2.byId['q-next'].hidden, true);
+  assert.strictEqual(h2.byId['q-feedback'], undefined, 'no explanation box on the quiz screen');
   h2.type(h2.byId['q-answer'], '틀린 답'); h2.click(h2.byId['q-confirm']); await settle();
-  assert.strictEqual(h2.text('q-feedback'), '설명입니다');
+  assert.deepStrictEqual(h2.page(), ['p-quiz-note']);
+  assert.strictEqual(h2.text('qn-text'), '설명입니다');
   assert.strictEqual(h2.text('q-next'), '참여 완료');
-  assert.ok(['정답이에요!', '아쉬워요!', '정답:'].every((s) => h2.byId['p-quiz'].textContent.indexOf(s) === -1), 'no right/wrong feedback');
+  assert.ok(['정답이에요!', '아쉬워요!', '정답:'].every((s) => h2.byId['p-quiz-note'].textContent.indexOf(s) === -1), 'no right/wrong feedback');
   h2.click(h2.byId['q-next']); await settle();
   const body = f.posts('submit')[0];
   assert.strictEqual(body.entryType, 'info');
@@ -543,7 +559,7 @@ test('F2r run: the embedded explanation shows offline and the consent collected-
   await h2.advance(5100); // the config fails, then the embedded content is used
   await pickConcern(h2, [0]);
   h2.type(h2.byId['q-answer'], 'x'); h2.click(h2.byId['q-confirm']); await settle();
-  assert.strictEqual(h2.text('q-feedback'), '80개 브랜드 데이터 기반으로 쌓은 Insight 와 Valen Agent 를 오후 5시에서 보실 수 있습니다.');
+  assert.strictEqual(h2.text('qn-text'), '80개 브랜드 데이터 기반으로 쌓은 Insight 와' + String.fromCharCode(10) + 'Valen Agent 를 오후 5시에서 보실 수 있습니다.');
   assert.ok(h2.byId['p-info'].textContent.indexOf(LIVE_COLLECTED) === -1);
 });
 
@@ -596,14 +612,13 @@ test('F2r run: offline saving retries with one body; a manual retry after exhaus
   assert.ok(JSON.parse(h.local.map.get(STORE_KEY)).ticket, 'the ticket is stored');
 });
 
-test('F2r run: the saving text is written only when it changes; a locked answer is read-only', async () => {
+test('F2r run: the saving text is written only when it changes', async () => {
   const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {})));
   const h = boot({ fetch: f });
   await settle();
   await fillInfo(h); await pickConcern(h, [0]);
   h.type(h.byId['q-answer'], 'a'); h.click(h.byId['q-confirm']); await settle();
-  assert.strictEqual(h.byId['q-answer'].readOnly, true);
-  assert.strictEqual(h.byId['q-answer'].disabled, false);
+  assert.deepStrictEqual(h.page(), ['p-quiz-note']);
   let writes = 0;
   const el = h.byId['saving-text'];
   Object.defineProperty(el, 'textContent', { set(v) { writes += 1; this._text = String(v); }, get() { return this._text; } });
@@ -679,7 +694,7 @@ test('C28 run: the intro shows after the info form, 시작하기 leads to the co
   assert.strictEqual(f.posts('submit').length, 0);
   await startIntro(h2);
   assert.deepStrictEqual(h2.page(), ['p-concern']);
-  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).stage, 'quiz');
+  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).stage, 'concern');
   // reload after the button, at the concern step and later: the intro never comes back
   const h3 = boot({ fetch: f, local });
   await settle();
@@ -769,7 +784,8 @@ test('C28 run: the intro is not shown again after progress passed it: previous-b
   assert.deepStrictEqual(h1.page(), ['p-info']);
   h1.check(h1.byId['consent-required'], true);
   h1.click(h1.byId['info-next']); await settle(); await h1.advance(5100);
-  assert.deepStrictEqual(h1.page(), ['p-quiz']);
+  assert.deepStrictEqual(h1.page(), ['p-concern'], 'forward from the info form is the concern step once the intro is passed');
+  assert.strictEqual(h1.byId['p-concern'].querySelectorAll('input')[0].checked, true, 'the pick is kept');
   // trigger 2: a person who pressed 시작하기 gets a server error that returns to the info form, then submits again
   let posts = 0;
   const f = fakeFetch((url, init) => {
@@ -787,7 +803,7 @@ test('C28 run: the intro is not shown again after progress passed it: previous-b
   h2.check(h2.byId['consent-required'], true);
   h2.click(h2.byId['info-next']); await settle();
   assert.notDeepStrictEqual(h2.page(), ['p-intro'], 'no second intro');
-  assert.deepStrictEqual(h2.page(), ['p-quiz'], 'back to where the person was');
+  assert.deepStrictEqual(h2.page(), ['p-concern'], 'forward from the info form is the concern step, picks kept');
   // a fresh attendee on the same device after a finished event reset still sees the intro once
   const h3 = boot({ fetch: fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {}))) });
   await settle();
@@ -857,8 +873,10 @@ test('C28 run: the embedded quiz question is the final one and the quiz answer i
   assert.strictEqual(h.text('q-hint-text'), 'ㅊㅂㅎ (3글자)');
   assert.ok(h.text('q-hint').indexOf('힌트 :') !== -1);
   h.type(h.byId['q-answer'], '차별화'); h.click(h.byId['q-confirm']); await settle();
-  assert.strictEqual(h.text('q-feedback'), '80개 브랜드 데이터 기반으로 쌓은 Insight 와 Valen Agent 를 오후 5시에서 보실 수 있습니다.');
+  assert.deepStrictEqual(h.page(), ['p-quiz-note']);
+  assert.strictEqual(h.text('qn-text'), '80개 브랜드 데이터 기반으로 쌓은 Insight 와' + String.fromCharCode(10) + 'Valen Agent 를 오후 5시에서 보실 수 있습니다.');
   h.click(h.byId['q-next']); await settle();
+  assert.deepStrictEqual(h.page(), ['p-saving'], '참여 완료 on the quiz note saves');
   const body = f.posts('submit')[0];
   assert.deepStrictEqual(body.answers, [{ questionId: 'concern', value: '신제품을 기획 중이다 | 크리에이터 협업을 검토 중이다' }]);
   assert.strictEqual(JSON.stringify(body).indexOf('차별화'), -1);
@@ -936,6 +954,206 @@ test('C28 run: the same phone sent again gets the same final screen with no "alr
   assert.deepStrictEqual(d.page(), ['p-ticket']);
   assert.strictEqual(d.vis('demo-badge'), true);
   assert.strictEqual(d.text('p-ticket').indexOf('미리보기'), -1, 'no watermark inside the final screen');
+});
+
+// ============================================================================================ C29: Back, note screens
+test('C29 page: Back control on the five middle screens only; intro rows share one left edge; the two note screens carry only their text and button', () => {
+  ['p-intro', 'p-concern', 'p-concern-note', 'p-quiz', 'p-quiz-note'].forEach((id) => {
+    const sec = section(id);
+    assert.ok(/<button type="button" class="back" id="back-[a-z-]+" data-testid="back">이전으로<\/button>/.test(sec), id + ' needs the Back control');
+    assert.ok(sec.indexOf('class="back"') < sec.search(/<h[12]/), id + ': Back comes first (top-left)');
+  });
+  ['p-info', 'p-saving', 'p-error', 'p-ticket', 'p-wait'].forEach((id) => assert.strictEqual(section(id).indexOf('이전으로'), -1, id + ' has no Back'));
+  assert.ok(/\.back \{[^}]*text-align: left/.test(html));
+  // intro: one block, rows left-aligned inside it (circles in one column, texts at one edge), the block centered
+  const intro = section('p-intro');
+  assert.ok(/<div class="steps">\s*<p class="step">[\s\S]*<p class="step">[\s\S]*<\/div>/.test(intro), 'both rows sit in one .steps block');
+  const steps = html.match(/\.intro \.steps \{[^}]*\}/)[0];
+  assert.ok(/width: fit-content/.test(steps) && /margin: 0 auto/.test(steps) && /text-align: left/.test(steps), steps);
+  const step = html.match(/\.intro \.step \{[^}]*\}/)[0];
+  assert.ok(/display: flex/.test(step) && /justify-content: flex-start/.test(step) && !/justify-content: center/.test(step), step);
+  const num = html.match(/\.intro \.num \{[^}]*\}/)[0];
+  assert.ok(/flex: none/.test(num) && /width: 30px/.test(num), 'every circle has the same fixed width');
+  // the heading, the hint line and the button stay centered
+  assert.ok(/\.intro \{ text-align: center;/.test(html));
+  // concern note: only the 17:00 line and the button
+  const cn = section('p-concern-note');
+  assert.strictEqual(squash(cn), '이전으로 오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다 다음으로');
+  assert.ok(/class="page intro"/.test(markup.match(/<section[^>]*id="p-concern-note"[^>]*>/)[0]), 'same look as the intro');
+  assert.strictEqual(section('p-concern').indexOf('오후 5시'), -1);
+  assert.strictEqual(markup.indexOf('concern-hint'), -1);
+  // quiz note: only the explanation (filled by the page) and the button; the quiz screen has no explanation box
+  const qn = section('p-quiz-note');
+  assert.strictEqual(squash(qn), '이전으로 참여 완료');
+  assert.ok(/class="page intro"/.test(markup.match(/<section[^>]*id="p-quiz-note"[^>]*>/)[0]));
+  assert.ok(!/q-feedback|class="explain"/.test(markup), 'no explanation box on the quiz screen');
+  assert.ok(/\.intro h2\.note-text \{[^}]*\}/.test(html));
+  assert.strictEqual(squash(section('p-quiz')).indexOf('참여 완료'), -1);
+});
+
+async function fillFirstPass(h, phone) {
+  await fillInfo(h, phone ? { phone } : undefined);   // -> intro
+  await startIntro(h);                               // -> concern
+}
+const values = (h) => ['field-name', 'field-email', 'field-phone', 'field-org'].map((id) => h.byId[id].value);
+const click = async (h, id) => { h.click(h.byId[id]); await settle(); };
+
+test('C29 run: Back from every screen lands one screen back and keeps what was entered; an edited phone number is what is sent', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ questions: mkQs(2) })) : new Promise(() => {})));
+  const h = boot({ fetch: f });
+  await settle();
+  await fillInfo(h, { phone: '01012345678' });
+  assert.deepStrictEqual(h.page(), ['p-intro']);
+  // intro -> info: every value and the consent tick are there
+  await click(h, 'back-intro');
+  assert.deepStrictEqual(h.page(), ['p-info']);
+  assert.deepStrictEqual(values(h), ['테스트참가자', 'test@example.com', '010-1234-5678', '테스트회사 대리']);
+  assert.strictEqual(h.byId['consent-required'].checked, true);
+  // correct the phone number and go forward: the intro again (not passed yet)
+  h.type(h.byId['field-phone'], '01099998888');
+  await click(h, 'info-next');
+  assert.deepStrictEqual(h.page(), ['p-intro']);
+  await startIntro(h);
+  assert.deepStrictEqual(h.page(), ['p-concern']);
+  h.check(concernBoxes(h)[1], true); h.check(concernBoxes(h)[3], true);
+  await click(h, 'concern-next');
+  assert.deepStrictEqual(h.page(), ['p-concern-note']);
+  await click(h, 'concern-note-next');
+  assert.deepStrictEqual(h.page(), ['p-quiz']);
+  h.type(h.byId['q-answer'], 'abc');                 // typed, not confirmed
+  // quiz -> concern note -> concern, picks kept
+  await click(h, 'back-quiz');
+  assert.deepStrictEqual(h.page(), ['p-concern-note']);
+  await click(h, 'back-concern-note');
+  assert.deepStrictEqual(h.page(), ['p-concern']);
+  assert.deepStrictEqual(concernBoxes(h).map((b) => b.checked), [false, true, false, true, false]);
+  assert.strictEqual(h.byId['concern-next'].disabled, false);
+  await click(h, 'concern-next'); await click(h, 'concern-note-next');
+  assert.deepStrictEqual(h.page(), ['p-quiz']);
+  assert.strictEqual(h.byId['q-answer'].value, 'abc', 'the typed answer is still there');
+  assert.strictEqual(h.byId['q-confirm'].disabled, false);
+  await click(h, 'q-confirm');
+  assert.deepStrictEqual(h.page(), ['p-quiz-note']);
+  // quiz note -> quiz: the answer is editable again
+  await click(h, 'back-quiz-note');
+  assert.deepStrictEqual(h.page(), ['p-quiz']);
+  assert.strictEqual(h.byId['q-answer'].value, 'abc');
+  assert.strictEqual(h.byId['q-answer'].readOnly, false);
+  assert.strictEqual(h.byId['q-confirm'].disabled, false);
+  h.type(h.byId['q-answer'], 'abd'); await click(h, 'q-confirm');
+  assert.deepStrictEqual(h.page(), ['p-quiz-note']);
+  await click(h, 'q-next');                          // 다음으로 -> question 2
+  assert.strictEqual(h.text('q-title'), '질문 2');
+  h.type(h.byId['q-answer'], 'zz');
+  // question 2 -> note of question 1 -> question 1 (edited answer kept)
+  await click(h, 'back-quiz');
+  assert.deepStrictEqual(h.page(), ['p-quiz-note']);
+  assert.strictEqual(h.text('q-next'), '다음으로');
+  await click(h, 'back-quiz-note');
+  assert.strictEqual(h.text('q-title'), '질문 1');
+  assert.strictEqual(h.byId['q-answer'].value, 'abd');
+  await click(h, 'q-confirm'); await click(h, 'q-next');
+  assert.strictEqual(h.text('q-title'), '질문 2');
+  assert.strictEqual(h.byId['q-answer'].value, 'zz', 'the draft of question 2 survived the trip');
+  await click(h, 'q-confirm');
+  assert.strictEqual(h.text('q-next'), '참여 완료');
+  await click(h, 'q-next');
+  assert.deepStrictEqual(h.page(), ['p-saving']);
+  const body = f.posts('submit')[0];
+  assert.strictEqual(body.info.phone, '010-9999-8888', 'the corrected phone number is what is sent');
+  assert.deepStrictEqual(body.answers, [{ questionId: 'concern', value: '해외 진출을 준비 중이다 | 크리에이터 협업을 검토 중이다' }]);
+  assert.strictEqual(JSON.stringify(body).indexOf('abd'), -1);
+});
+
+test('C29 run: Back from the concern step always shows the intro; forward from the info form skips a passed intro', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {})));
+  const local = makeStorage();
+  const h = boot({ fetch: f, local });
+  await settle();
+  await fillFirstPass(h);
+  assert.deepStrictEqual(h.page(), ['p-concern']);
+  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).introDone, true);
+  await click(h, 'back-concern');
+  assert.deepStrictEqual(h.page(), ['p-intro'], 'the intro again although it was passed');
+  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).stage, 'intro');
+  // a reload at that intro stays there
+  const h2 = boot({ fetch: f, local });
+  await settle();
+  assert.deepStrictEqual(h2.page(), ['p-intro']);
+  // intro -> info -> forward: the concern step (passed intro), not the intro
+  await click(h2, 'back-intro');
+  assert.deepStrictEqual(h2.page(), ['p-info']);
+  assert.strictEqual(h2.byId['consent-required'].checked, true);
+  await click(h2, 'info-next');
+  assert.deepStrictEqual(h2.page(), ['p-concern']);
+  // and the start button of a re-shown intro leads to the concern step again
+  await click(h2, 'back-concern'); await startIntro(h2);
+  assert.deepStrictEqual(h2.page(), ['p-concern']);
+});
+
+test('C29 run: a reload returns to the same screen on the concern note, the quiz (with its draft) and the quiz note', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {})));
+  const local = makeStorage();
+  const h = boot({ fetch: f, local });
+  await settle();
+  await fillInfo(h); await pickConcernOnly(h, [2]);
+  const a = boot({ fetch: f, local }); await settle();
+  assert.deepStrictEqual(a.page(), ['p-concern-note']);
+  await click(a, 'concern-note-next');
+  a.type(a.byId['q-answer'], '쓰는중');                                 // a draft
+  const b = boot({ fetch: f, local }); await settle();
+  assert.deepStrictEqual(b.page(), ['p-quiz']);
+  assert.strictEqual(b.byId['q-answer'].value, '쓰는중');
+  assert.strictEqual(b.byId['q-confirm'].disabled, false);
+  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).drafts.q1, '쓰는중');
+  await click(b, 'q-confirm');
+  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).drafts.q1, undefined, 'the draft is dropped once confirmed');
+  const c = boot({ fetch: f, local }); await settle();
+  assert.deepStrictEqual(c.page(), ['p-quiz-note']);
+  assert.strictEqual(c.text('qn-text'), '설명입니다');
+  // Back and forward from the reloaded note screen still work
+  await click(c, 'back-quiz-note');
+  assert.strictEqual(c.byId['q-answer'].value, '쓰는중');
+  assert.strictEqual(c.byId['q-answer'].readOnly, false);
+});
+
+test('C29 run: states written by the previous build (stage quiz) map to the quiz or the quiz note; outdated info still returns to the form', async () => {
+  const info = { name: '테스트참가자', organization: '테스트회사 대리', phone: '010-0000-0001', email: 'test@example.com' };
+  const prev = (answers, version) => storedState(undefined, { ticket: undefined, stage: 'quiz', qIndex: 1, answers, entryType: 'info', info, consent: { required: true, marketing: false, version } });
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {})));
+  // a concern pick and a stored quiz answer: the quiz note screen
+  const a = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: prev({ concern: '신제품을 기획 중이다', q1: '차별화' }, 'cv1') }) });
+  await settle();
+  assert.deepStrictEqual(a.page(), ['p-quiz-note']);
+  assert.strictEqual(a.text('qn-text'), '설명입니다');
+  assert.strictEqual(a.text('q-next'), '참여 완료');
+  await click(a, 'back-quiz-note');                  // the stored answer is editable
+  assert.strictEqual(a.byId['q-answer'].value, '차별화');
+  assert.strictEqual(a.byId['q-answer'].readOnly, false);
+  // a concern pick without a quiz answer: the quiz
+  const b = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: prev({ concern: '신제품을 기획 중이다' }, 'cv1') }) });
+  await settle();
+  assert.deepStrictEqual(b.page(), ['p-quiz']);
+  assert.strictEqual(b.byId['q-answer'].value, '');
+  // nothing answered yet: the concern step
+  const c = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: prev({}, 'cv1') }) });
+  await settle();
+  assert.deepStrictEqual(c.page(), ['p-concern']);
+  // outdated consent: the info form first (values kept), then forward goes to the concern step with the pick kept
+  const d = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: prev({ concern: '신제품을 기획 중이다', q1: 'x' }, 'a-day-2026-v2') }) });
+  await settle();
+  assert.deepStrictEqual(d.page(), ['p-info']);
+  d.check(d.byId['consent-required'], true);
+  await click(d, 'info-next');
+  assert.deepStrictEqual(d.page(), ['p-concern']);
+  // the same check holds for the new stages: outdated info at the concern note or the quiz note goes back to the form
+  for (const stage of ['concern-note', 'question', 'question-note']) {
+    const st = storedState(undefined, { ticket: undefined, stage, qIndex: 1, answers: { concern: '신제품을 기획 중이다', q1: 'x' }, entryType: 'info', info, consent: { required: true, marketing: false, version: 'a-day-2026-v2' } });
+    const h = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: st }) });
+    await settle();
+    assert.deepStrictEqual(h.page(), ['p-info'], stage);
+    assert.strictEqual(h.byId['field-name'].value, '테스트참가자');
+  }
 });
 
 // ============================================================================================ run: Codex review (C24)
@@ -1076,8 +1294,8 @@ test('F2r run: nine server questions and ten server questions: the answers sent 
   await fillInfo(h); await pickConcern(h, [0]);
   for (let i = 1; i <= 9; i++) {
     assert.strictEqual(h.text('q-title'), '질문 ' + i);
-    assert.strictEqual(h.text('q-next'), i === 9 ? '참여 완료' : '다음으로');
     h.type(h.byId['q-answer'], '정답'); h.click(h.byId['q-confirm']); await settle();
+    assert.strictEqual(h.text('q-next'), i === 9 ? '참여 완료' : '다음으로');
     h.click(h.byId['q-next']); await settle();
   }
   const body = f.posts('submit')[0];

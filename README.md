@@ -2,13 +2,21 @@
 
 Static participant page served by GitHub Pages so the printed QR never depends on Google account routing.
 The page walks one person through: the info form (name, email, phone with automatic hyphens, company and title, one required
-consent), the event intro screen (`이벤트 안내`, shown once, with a start button), the concern choice, the one-question quiz,
-a short wait (`잠시만요`) while the save is confirmed, and the final "participation complete" screen. The quiz answer stays on
+consent), the event intro screen (`이벤트 안내`, with a start button), the concern choice, a note screen with the 17:00 line, the
+one-question quiz, a note screen with the explanation (button `참여 완료`), a short wait (`잠시만요`) while the save is confirmed, and the final "participation complete" screen. The quiz answer stays on
 the device: the save sends only the concern choice. The final screen is static (pill, gift, thanks, "show this screen to the
 staff", logo on the team's blue gradient, `assets/gift.webp` and `assets/valen-logo.webp`): there is no ticket number, live
 clock, status check or staff panel, and a reload after completion shows the same screen and makes no ticket request.
 Sending the same phone number again ends on the same screen. The page saves through a JSON API (Apps Script, fetch only).
 The theme is light.
+
+Every step between the info form and saving has an `이전으로` control at the top-left that goes one screen back in the fixed
+sequence info, intro, concern, concern note, quiz, quiz note (with several quiz questions: question, note, question, note, ...).
+Everything entered stays (info values, consent tick, concern picks, the quiz answer, which is editable again). Going forward
+from the info form shows the intro unless it was already passed, then the concern step; Back from the concern step always shows
+the intro. Each screen is stored as a stage (`intro`, `concern`, `concern-note`, `question`, `question-note`, plus the question
+index), so a reload returns to the same screen; an unconfirmed quiz answer is kept as a local draft. A state stored by the
+previous build (stage `quiz`) opens the quiz note when the question has a stored answer, otherwise the quiz or the concern step.
 
 ## At the booth
 

@@ -8,7 +8,7 @@
 (function (root) {
   'use strict';
   var defaults = {
-    build: '2026-10-12.1',
+    build: '2026-10-12.2',
     apiUrl: 'https://script.google.com/macros/s/AKfycbygdI_wkT2lH7Dt3jm9HY4womEp9CznhEbeusgnbm350TjbEiUCS1_8fqwCwbwTcCulWQ/exec',
     embedded: {
       eventId: 'a-day-2026',
@@ -27,7 +27,7 @@
           title: "만드는 것이 어려운 시대는 이미 지났습니다.\n'어떻게 OOO를 만들지' 정하는 것이 남은 경쟁입니다.",
           hint: 'ㅊㅂㅎ (3글자)',
           options: [], imageA: '', imageB: '', captionA: '', captionB: '',
-          accepted: ['차별화'], correct: '', explanation: '80개 브랜드 데이터 기반으로 쌓은 Insight 와 Valen Agent 를 오후 5시에서 보실 수 있습니다.'
+          accepted: ['차별화'], correct: '', explanation: '80개 브랜드 데이터 기반으로 쌓은 Insight 와\nValen Agent 를 오후 5시에서 보실 수 있습니다.'
         }
       ]
     }
