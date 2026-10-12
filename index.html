@@ -87,7 +87,7 @@
   .intro { text-align: center; color: #091550; padding-top: 14vh; }
   .intro h2 { font-size: 28px; font-weight: 800; line-height: 1.35; margin: 0 0 28px; }
   .intro .step { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 0 0 14px; font-size: 18px; font-weight: 600; }
-  .intro .num { flex: none; width: 30px; height: 30px; border-radius: 50%; background: #091550; color: #ffffff; font-size: 16px; font-weight: 800; line-height: 30px; text-align: center; }
+  .intro .num { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #091550; color: #091550; font-size: 16px; font-weight: 800; line-height: 26px; text-align: center; }
   .intro .lead { margin: 22px 0 36px; font-size: 15px; }
   /* Final screen: the team's "participation complete" design (navy text on the blue gradient). */
   .ticket { display: flex; flex-direction: column; align-items: center; text-align: center; color: #0b1c5c; padding-top: 6vh; }
@@ -351,10 +351,10 @@
   function route() {
     var r = Q.routeOnLoad(state, null);
     // A stored pending request is replayed only after config is known (at most 5 s): it may belong to another event.
-    if (r.route === 'quiz' || r.route === 'saving') {
+    if (r.route === 'quiz' || r.route === 'saving' || r.route === 'intro') {
       whenContent(function () {
         // Stored progress that predates the current consent text or the four required fields goes back to the form.
-        if (r.route === 'quiz' && infoOutdated()) { renderInfo(''); return; }
+        if ((r.route === 'quiz' || r.route === 'intro') && infoOutdated()) { renderInfo(''); return; }
         enter(Q.routeOnLoad(state, content));
       });
     }
@@ -406,6 +406,13 @@
   });
   // The phone field hyphenates itself while typing and on paste (an input event covers both). When the edit was in
   // the middle of the text, the caret is put back after the same number of digits instead of jumping to the end.
+  // Puts the caret right after the given number of digits.
+  function placeCaret(el, digits) {
+    if (typeof el.setSelectionRange !== 'function') { return; }
+    var at = 0;
+    for (var seen = 0; at < el.value.length && seen < digits; at++) { if (/\d/.test(el.value.charAt(at))) { seen++; } }
+    el.setSelectionRange(at, at);
+  }
   $('field-phone').addEventListener('input', function () {
     var el = $('field-phone');
     var before = el.value;
@@ -414,10 +421,23 @@
     var pos = typeof el.selectionStart === 'number' && el.selectionStart < before.length ? el.selectionStart : -1;
     var digits = pos < 0 ? 0 : before.slice(0, pos).replace(/\D/g, '').length;
     el.value = after;
-    if (pos < 0 || typeof el.setSelectionRange !== 'function') { return; }
-    var at = 0;
-    for (var seen = 0; at < after.length && seen < digits; at++) { if (/\d/.test(after.charAt(at))) { seen++; } }
-    el.setSelectionRange(at, at);
+    if (pos >= 0) { placeCaret(el, digits); }
+  });
+  // Backspace or Delete next to a hyphen the page inserted would only remove it and have it come back. The hyphen is
+  // not a character of the number, so the digit beside it is deleted instead (Backspace: the one before, Delete: the one after).
+  $('field-phone').addEventListener('beforeinput', function (ev) {
+    var el = $('field-phone');
+    var back = ev.inputType === 'deleteContentBackward';
+    if ((!back && ev.inputType !== 'deleteContentForward') || typeof el.selectionStart !== 'number' || el.selectionStart !== el.selectionEnd) { return; }
+    var pos = el.selectionStart;
+    if (el.value.charAt(back ? pos - 1 : pos) !== '-') { return; }
+    var drop = back ? pos - 2 : pos + 1;
+    if (drop < 0 || drop >= el.value.length) { return; }
+    ev.preventDefault();
+    var digits = el.value.slice(0, drop).replace(/\D/g, '').length; // digits that stay in front of the caret
+    el.value = Q.formatPhone(el.value.slice(0, drop) + el.value.slice(drop + 1));
+    placeCaret(el, digits);
+    if (infoErrorCode && infoErrorCode !== 'CONSENT_TEXT_MISSING') { hideInfoError(); } // no input event fires for this edit
   });
   $('info-form').addEventListener('submit', function (ev) {
     ev.preventDefault();
@@ -429,7 +449,9 @@
     state.entryType = 'info';
     state.info = info;
     state.consent = consent;
-    state.stage = 'intro'; // routeOnLoad sends stage "intro" to the intro screen, also after a reload
+    // The intro is shown once: routeOnLoad sends stage "intro" there (also after a reload), but a person who already
+    // passed it (introDone, also derived from older stored progress) goes straight on after re-entering the info.
+    state.stage = state.introDone === true ? 'quiz' : 'intro';
     persist();
     route();
   });
@@ -440,8 +462,9 @@
     persist();
     show('p-intro');
   }
-  // Past the intro the stage is "quiz" for good: no later route shows the intro again.
+  // Past the intro: the stored flag keeps it from coming back, even after a trip to the info form.
   $('intro-start').onclick = function () {
+    state.introDone = true;
     state.stage = 'quiz';
     persist();
     route();

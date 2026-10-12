@@ -145,9 +145,11 @@
 
   // Hyphenates a phone number while it is typed or pasted: digits only, at most 11, then 3-4-4 (11 digits), 3-3-4
   // (10 digits) or a progressive 3-4-rest. A leading +82 is read like the server does (a pasted international number
-  // keeps its meaning). It only changes how the text looks; validation still runs on normalizePhone.
+  // keeps its meaning). It only changes how the text looks; validation still runs on normalizePhone, whose leading
+  // apostrophe (a spreadsheet text marker) and trim steps are applied first here too.
   function formatPhone(value) {
-    var text = String(value === null || value === undefined ? '' : value).normalize('NFKC').trim().replace(/^\+82[\s-]*0?/, '0');
+    var text = String(value === null || value === undefined ? '' : value).normalize('NFKC').trim().replace(/^'/, '').trim()
+      .replace(/^\+82[\s-]*0?/, '0');
     var d = text.replace(/\D/g, '').slice(0, 11);
     if (d.length <= 3) { return d; }
     if (d.length <= 7) { return d.slice(0, 3) + '-' + d.slice(3); }
@@ -511,6 +513,7 @@
       v: 3, savedAt: nowMs, eventId: s.eventId || '', stage: s.stage || 'landing', entryType: s.entryType || '',
       answers: isObject(s.answers) ? s.answers : {}, qIndex: s.qIndex | 0
     };
+    if (s.introDone === true) { out.introDone = true; } // the intro screen was passed: it is never shown again
     if (isObject(s.consent)) {
       out.consent = { required: s.consent.required === true, marketing: s.consent.marketing === true, version: s.consent.version || '' };
     }
@@ -542,7 +545,17 @@
     }
     if (!isObject(s.answers)) { s.answers = {}; }
     if (isObject(s.ticket)) { delete s.info; delete s.pending; }
+    if (introPassed(s)) { s.introDone = true; } // states stored by the previous build carry no flag: derive it once, here
     return s;
+  }
+
+  // True when the person is already past the intro screen: the flag set by its start button, or any progress that only
+  // exists after it (stage quiz/saving/ticket, a concern pick, a pending request or a ticket).
+  function introPassed(state) {
+    var s = state || {};
+    if (s.introDone === true || isObject(s.ticket) || isObject(s.pending)) { return true; }
+    if (s.stage === 'quiz' || s.stage === 'saving' || s.stage === 'ticket') { return true; }
+    return !isBlank(isObject(s.answers) ? s.answers.concern : '');
   }
 
   // When config.eventId differs from the stored event, progress and ticket are cleared; the device id key is
@@ -609,7 +622,7 @@
     if (!state) { return { route: 'landing' }; }
     if (isObject(state.ticket)) { return { route: 'ticket' }; }
     if (isObject(state.pending) && state.pending.requestId && isObject(state.pending.body)) { return { route: 'saving', resend: true }; }
-    if (state.stage === 'intro') { return isObject(state.info) ? { route: 'intro' } : { route: 'info' }; }
+    if (state.stage === 'intro' && state.introDone !== true) { return isObject(state.info) ? { route: 'intro' } : { route: 'info' }; }
     if (state.stage === 'info') { return { route: 'info' }; }
     if (state.entryType !== 'card' && state.entryType !== 'info') { return { route: 'landing' }; }
     if (state.entryType === 'info' && !isObject(state.info)) { return { route: 'info' }; }
@@ -631,7 +644,7 @@
     normalizeAnswerText: normalizeAnswerText, gradeForDisplay: gradeForDisplay,
     getDeviceId: getDeviceId, storageKeys: storageKeys, freshState: freshState, loadState: loadState, saveState: saveState,
     resetForEvent: resetForEvent, applyTicket: applyTicket, submitWithPending: submitWithPending,
-    routeOnLoad: routeOnLoad, errorCopy: errorCopy, errorInfo: errorInfo,
+    routeOnLoad: routeOnLoad, introPassed: introPassed, errorCopy: errorCopy, errorInfo: errorInfo,
     savingText: savingText
   };
 });

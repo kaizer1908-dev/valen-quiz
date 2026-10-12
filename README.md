@@ -22,7 +22,7 @@ as used. If the quiz feels hard, staff may tell the answer.
 - With more than 9 questions, or a question named `concern`, the page does not use the Sheet questions at all and falls back to the embedded question in `defaults.js` (the other Sheet gates still apply).
 - The consent text version is `a-day-2026-v3` (in `defaults.js` and in the Sheet `consent_version`; the Sheet `consent_required_detail` carries the same four lines as `defaults.js`). Stored progress for another version (for example one consented under v2), or without all four required fields, goes back to the info form with the entered values kept.
 - The quiz answer is never sent, whatever the content source. The submit body's `answers` are exactly the concern choice; the server needs at least one answer and the concern step always provides it.
-- A stored state whose stage is `intro` (info given, start button not yet pressed) returns to the intro screen after a reload. Progress past the intro, and states stored by older builds without that stage, never show it again.
+- A stored state whose stage is `intro` (info given, start button not yet pressed) returns to the intro screen after a reload. Pressing the start button stores `introDone`, and progress stored by older builds (stage quiz or saving, a concern pick, a pending request or a ticket) is recognised as past the intro on load, so the intro is never shown again, not even after a trip back to the info form. A reload at the intro with outdated info (other consent version, a required field missing) returns to the info form. The `시작하기` button keeps the shared button style (white text on navy) like the other screens; all other intro text is #091550.
 
 ## Permanence rule
 

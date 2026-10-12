@@ -324,6 +324,10 @@ test('C28 phone: formatPhone hyphenates while typing and on paste (digits only, 
     ['０１０１２３４５６７８', '010-1234-5678'], // full-width digits
     ['+82 10-1234-5678', '010-1234-5678'],     // a pasted international number keeps its meaning
     ['+8201012345678', '010-1234-5678'],
+    ["'+82 10-1234-5678", '010-1234-5678'],    // the spreadsheet apostrophe is dropped before the +82 prefix is read, like normalizePhone
+    ["'01012345678", '010-1234-5678'],
+    ["  '+82 010-1234-5678 ", '010-1234-5678'],
+    ["'", ''], ['+', ''], ['+8', '8'],            // partial typing keeps working
     ['abc', ''], [null, ''], [undefined, '']
   ];
   cases.forEach(([input, expected]) => assert.strictEqual(QC.formatPhone(input), expected, JSON.stringify(input)));
@@ -332,6 +336,11 @@ test('C28 phone: formatPhone hyphenates while typing and on paste (digits only, 
   const seen = [];
   while (typed.length) { typed = QC.formatPhone(typed.slice(0, -1)); seen.push(typed); }
   seen.forEach((t) => assert.ok(!/-$/.test(t), 'ends in a hyphen: ' + t));
+  // for every pasted shape normalizePhone accepts, the formatted text normalizes to the same digits
+  ["'+82 10-1234-5678", '+82-10-1234-5678', '+8201012345678', "'01012345678", '010.1234.5678', '010 1234 5678'].forEach((raw) => {
+    assert.strictEqual(QC.normalizePhone(QC.formatPhone(raw)), QC.normalizePhone(raw), JSON.stringify(raw));
+    assert.notStrictEqual(QC.normalizePhone(raw), '', JSON.stringify(raw));
+  });
   // formatting is cosmetic: what it produces validates like the plain digits
   assert.strictEqual(QC.normalizePhone(QC.formatPhone('01012345678')), '01012345678');
   assert.strictEqual(QC.normalizePhone(QC.formatPhone('0111234567')), '0111234567');
@@ -618,6 +627,36 @@ test('F1 grade: display grading matches the K3 normalization examples', () => {
   assert.strictEqual(QC.gradeForDisplay({ type: 'ab', correct: 'A' }, 'B'), false);
   assert.strictEqual(QC.gradeForDisplay({ type: 'ab', correct: 'A' }, 'a'), false);
   assert.strictEqual(QC.gradeForDisplay({ type: 'unknown' }, 'a'), '');
+});
+
+test('C28 storage: the introDone flag is stored, and older progress past the intro is recognised on load', () => {
+  const T = 1712345678901;
+  const info = { name: 'n', phone: '010-0000-0001' };
+  const s = memStorage();
+  QC.saveState(s, { eventId: 'a-day-2026', stage: 'info', entryType: 'info', info, answers: {}, introDone: true }, T);
+  assert.strictEqual(JSON.parse(s.getItem(QC.STORAGE_KEYS.state)).introDone, true);
+  QC.saveState(s, { eventId: 'a-day-2026', stage: 'intro', entryType: 'info', info, answers: {} }, T);
+  assert.strictEqual(JSON.parse(s.getItem(QC.STORAGE_KEYS.state)).introDone, undefined, 'no flag, no key');
+  assert.strictEqual(QC.loadState(s, T).introDone, undefined, 'a state still at the intro is not past it');
+  // states of the previous build have no flag: it is derived from the progress they hold
+  const pastIntro = [
+    { stage: 'quiz', answers: {} }, { stage: 'saving', answers: {} }, { stage: 'ticket', answers: {} },
+    { stage: 'info', answers: { concern: '신제품을 기획 중이다' } },
+    { stage: 'info', answers: {}, pending: { requestId: 'req-aaaaaaaaaaaaaaaa', body: {} } },
+    { stage: 'info', answers: {}, ticket: TICKET }
+  ];
+  pastIntro.forEach((extra) => {
+    QC.saveState(s, Object.assign({ eventId: 'a-day-2026', entryType: 'info', info, qIndex: 0 }, extra), T);
+    assert.strictEqual(QC.loadState(s, T).introDone, true, JSON.stringify(extra));
+  });
+  [{ stage: 'info', answers: {} }, { stage: 'intro', answers: {} }, { stage: 'landing', answers: {} }].forEach((extra) => {
+    QC.saveState(s, Object.assign({ eventId: 'a-day-2026', entryType: 'info', info }, extra), T);
+    assert.strictEqual(QC.loadState(s, T).introDone, undefined, JSON.stringify(extra));
+  });
+  assert.strictEqual(QC.introPassed(null), false);
+  assert.strictEqual(QC.introPassed({ introDone: true }), true);
+  // the flag wins over a stage that says intro
+  assert.deepStrictEqual(QC.routeOnLoad({ entryType: 'info', stage: 'intro', introDone: true, info, answers: {}, qIndex: 0 }), { route: 'quiz', qIndex: 0 });
 });
 
 test('C28 route: stage intro returns to the intro; any state past it (or an older one without it) is never sent back', () => {

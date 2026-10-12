@@ -183,7 +183,9 @@ test('C28 page: the intro screen carries the team copy verbatim, has no page hea
   // white page, all text #091550, centered
   const rule = html.match(/\.intro \{[^}]*\}/)[0];
   assert.ok(rule.indexOf('color: #091550') !== -1 && rule.indexOf('text-align: center') !== -1, rule);
-  assert.ok(!/\.intro[^{]*\{[^}]*(background|color): *#(?!091550|fff)/i.test(html.replace(/\.intro \.num \{[^}]*\}/, '')), 'no other text color on the intro');
+  assert.ok(!/\.intro[^{]*\{[^}]*(background|color): *#(?!091550|fff)/i.test(html), 'no other text color on the intro');
+  const num = html.match(/\.intro \.num \{[^}]*\}/)[0];
+  assert.ok(/[^-]color: #091550/.test(num) && !/color: #fff/i.test(num), 'the step numbers are #091550 text, not white: ' + num);
   assert.ok(/--page: #ffffff/.test(html), 'the page background is white');
   // the middle dot of the team line is the team's own; no other visible copy of ours uses it
   assert.strictEqual((text.match(/·/g) || []).length, 1);
@@ -707,15 +709,142 @@ test('C28 run: a stored state from before the intro existed is not forced back t
   const hC = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: JSON.stringify(raw) }) });
   await settle(); await hC.advance(5100);
   assert.deepStrictEqual(hC.page(), ['p-quiz']);
-  // stage intro with a stale consent text: 시작하기 returns to the info form with the values kept
+  // stage intro with a stale consent text: the reload returns to the info form with the values kept (once the content is known)
   const stale = storedState(undefined, { ticket: undefined, stage: 'intro', entryType: 'info', info, consent: { required: true, marketing: false, version: 'a-day-2026-v2' } });
   const hD = boot({ fetch: f, local: makeStorage({ [STORE_KEY]: stale }) });
-  await settle();
-  assert.deepStrictEqual(hD.page(), ['p-intro']);
-  await startIntro(hD); await hD.advance(5100);
+  await settle(); await hD.advance(5100);
   assert.deepStrictEqual(hD.page(), ['p-info']);
   assert.strictEqual(hD.byId['field-name'].value, '테스트참가자');
+  assert.strictEqual(hD.byId['consent-required'].checked, false);
 });
+
+test('C28 run: a reload at the intro with outdated info (other consent version, or a required field missing) returns to the info form; a current one stays', async () => {
+  const full = { name: '테스트참가자', organization: '테스트회사 대리', phone: '010-0000-0001', email: 'test@example.com' };
+  const atIntro = (info, version) => storedState(undefined, { ticket: undefined, stage: 'intro', entryType: 'info', info, consent: { required: true, marketing: false, version } });
+  const online = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {}))); // server consent version cv1
+  // other consent version (the stored one is the embedded v3, the server text is cv1)
+  const hA = boot({ fetch: online, local: makeStorage({ [STORE_KEY]: atIntro(full, 'a-day-2026-v3') }) });
+  await settle();
+  assert.deepStrictEqual(hA.page(), ['p-info']);
+  assert.strictEqual(hA.byId['field-org'].value, '테스트회사 대리');
+  // a required field missing, same version
+  const hB = boot({ fetch: online, local: makeStorage({ [STORE_KEY]: atIntro(Object.assign({}, full, { email: '' }), 'cv1') }) });
+  await settle();
+  assert.deepStrictEqual(hB.page(), ['p-info']);
+  assert.strictEqual(hB.byId['field-name'].value, '테스트참가자');
+  assert.strictEqual(hB.byId['consent-required'].checked, true, 'the same consent text keeps its tick');
+  // current: the intro stays, and nothing was sent
+  const hC = boot({ fetch: online, local: makeStorage({ [STORE_KEY]: atIntro(full, 'cv1') }) });
+  await settle();
+  assert.deepStrictEqual(hC.page(), ['p-intro']);
+  assert.strictEqual(online.posts('submit').length, 0);
+  // the outdated-state check also holds while the content is still awaited: the spinner, then the info form
+  const slow = deferred();
+  const fS = fakeFetch((url, init) => (init.method === 'GET' ? slow.promise : new Promise(() => {})));
+  const hS = boot({ fetch: fS, local: makeStorage({ [STORE_KEY]: atIntro(full, 'a-day-2026-v1') }) });
+  await settle();
+  assert.deepStrictEqual(hS.page(), ['p-wait']);
+  slow.resolve(env(cfgData())); await settle();
+  assert.deepStrictEqual(hS.page(), ['p-info']);
+});
+
+test('C28 run: the intro is not shown again after progress passed it: previous-build states with a stale consent, and a server error that returns to the info form', async () => {
+  const info = { name: '테스트참가자', organization: '테스트회사 대리', phone: '010-0000-0001', email: 'test@example.com' };
+  // trigger 1: a state of the previous build (stage quiz, no intro flag) with consent v2 goes to the info form, then on
+  const offline = fakeFetch(() => { throw new TypeError('offline'); });
+  const prev = storedState(undefined, { ticket: undefined, stage: 'quiz', qIndex: 0, answers: {}, entryType: 'info', info, consent: { required: true, marketing: false, version: 'a-day-2026-v2' } });
+  const local = makeStorage({ [STORE_KEY]: prev });
+  const h = boot({ fetch: offline, local });
+  await settle(); await h.advance(5100);
+  assert.deepStrictEqual(h.page(), ['p-info']);
+  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).introDone, true, 'the derived flag is written along with the info stage');
+  h.check(h.byId['consent-required'], true);
+  h.click(h.byId['info-next']); await settle();
+  assert.notDeepStrictEqual(h.page(), ['p-intro'], 'the intro is not shown again');
+  await h.advance(5100);
+  assert.deepStrictEqual(h.page(), ['p-concern']);
+  // the same after a reload at the info form
+  const h1 = boot({ fetch: offline, local: makeStorage({ [STORE_KEY]: prev.replace('"stage":"quiz"', '"stage":"info"').replace('"answers":{}', '"answers":{"concern":"신제품을 기획 중이다"}') }) });
+  await settle(); await h1.advance(5100);
+  assert.deepStrictEqual(h1.page(), ['p-info']);
+  h1.check(h1.byId['consent-required'], true);
+  h1.click(h1.byId['info-next']); await settle(); await h1.advance(5100);
+  assert.deepStrictEqual(h1.page(), ['p-quiz']);
+  // trigger 2: a person who pressed 시작하기 gets a server error that returns to the info form, then submits again
+  let posts = 0;
+  const f = fakeFetch((url, init) => {
+    if (init.method === 'GET') { return env(cfgData()); }
+    posts += 1;
+    return posts === 1 ? errEnv('INVALID_EMAIL', false) : new Promise(() => {});
+  });
+  const h2 = boot({ fetch: f });
+  await settle();
+  await fillInfo(h2);
+  assert.deepStrictEqual(h2.page(), ['p-intro'], 'the first pass shows the intro');
+  await pickConcern(h2, [0]); await answerQuiz(h2, 'x');
+  assert.deepStrictEqual(h2.page(), ['p-info'], 'the server sent the person back to the info form');
+  assert.strictEqual(h2.byId['field-name'].value, '테스트참가자');
+  h2.check(h2.byId['consent-required'], true);
+  h2.click(h2.byId['info-next']); await settle();
+  assert.notDeepStrictEqual(h2.page(), ['p-intro'], 'no second intro');
+  assert.deepStrictEqual(h2.page(), ['p-quiz'], 'back to where the person was');
+  // a fresh attendee on the same device after a finished event reset still sees the intro once
+  const h3 = boot({ fetch: fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {}))) });
+  await settle();
+  await fillInfo(h3);
+  assert.deepStrictEqual(h3.page(), ['p-intro']);
+});
+
+test('C28 run: Backspace and Delete next to a generated hyphen remove the digit beside it instead of looping', async () => {
+  const h = boot({ fetch: fakeFetch(() => { throw new TypeError('offline'); }) });
+  await settle();
+  const phone = h.byId['field-phone'];
+  let caret = null;
+  phone.setSelectionRange = (a, b) => { phone.selectionStart = a; phone.selectionEnd = b; caret = a; };
+  // fires the browser's beforeinput for a collapsed caret; returns whether the page took over (preventDefault)
+  const press = (inputType, at) => {
+    phone.selectionStart = at; phone.selectionEnd = at;
+    let prevented = false;
+    (phone.listeners.beforeinput || []).forEach((fn) => fn({ type: 'beforeinput', inputType, preventDefault() { prevented = true; } }));
+    return prevented;
+  };
+  // Backspace right after a hyphen: the digit before it goes
+  h.type(phone, '01012345678'); // 010-1234-5678
+  assert.strictEqual(press('deleteContentBackward', 4), true);          // 010-|1234-5678
+  assert.strictEqual(phone.value, '011-234-5678');
+  assert.strictEqual(caret, 2, 'two digits (0 1) stay in front of the caret');
+  h.type(phone, '01012345678');
+  assert.strictEqual(press('deleteContentBackward', 9), true);          // 010-1234-|5678
+  assert.strictEqual(phone.value, '010-123-5678');
+  assert.strictEqual(caret, 7, 'six digits stay in front: right after the 3 of 123');
+  // Delete right before a hyphen: the digit after it goes
+  h.type(phone, '01012345678');
+  assert.strictEqual(press('deleteContentForward', 3), true);           // 010|-1234-5678
+  assert.strictEqual(phone.value, '010-234-5678');
+  assert.strictEqual(caret, 3);
+  h.type(phone, '01012345678');
+  assert.strictEqual(press('deleteContentForward', 8), true);           // 010-1234|-5678: the 5 goes, the 4 moves behind the hyphen
+  assert.strictEqual(phone.value, '010-123-4678');
+  assert.strictEqual(caret, 9, 'seven digits stay in front: right after the 4');
+  // everything else is left to the browser (a digit, a selection, the ends of the text, other input types)
+  h.type(phone, '01012345678');
+  assert.strictEqual(press('deleteContentBackward', 3), false, 'a digit before the caret');
+  assert.strictEqual(press('deleteContentForward', 4), false, 'a digit after the caret');
+  assert.strictEqual(press('deleteContentBackward', 0), false);
+  assert.strictEqual(press('deleteContentForward', phone.value.length), false);
+  assert.strictEqual(press('insertText', 4), false);
+  phone.selectionStart = 3; phone.selectionEnd = 6;
+  let prevented = false;
+  phone.listeners.beforeinput.forEach((fn) => fn({ type: 'beforeinput', inputType: 'deleteContentBackward', preventDefault() { prevented = true; } }));
+  assert.strictEqual(prevented, false, 'a range selection is deleted by the browser');
+  assert.strictEqual(phone.value, '010-1234-5678');
+  // repeated Delete walks forward through the digits one at a time
+  h.type(phone, '01012345678');
+  press('deleteContentForward', 3); // 010-234-5678, caret before the hyphen
+  assert.strictEqual(press('deleteContentForward', caret), true);
+  assert.strictEqual(phone.value, '010-3456-78');
+});
+
 
 test('C28 run: the embedded quiz question is the final one and the quiz answer is never sent, with embedded and with server content', async () => {
   const f = fakeFetch(() => { throw new TypeError('offline'); });
