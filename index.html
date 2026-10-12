@@ -594,8 +594,9 @@
     var form = $('q-text');
     var input = $('q-answer');
     form.hidden = false;
-    var drafts = isObjectLike(state.drafts) ? state.drafts : {};
-    input.value = !blank(state.answers[q.id]) ? state.answers[q.id] : (drafts[q.id] || '');
+    // A draft entry (even an emptied one) is the latest thing typed and wins; the confirmed answer shows only without one.
+    var hasDraft = isObjectLike(state.drafts) && Object.prototype.hasOwnProperty.call(state.drafts, q.id);
+    input.value = hasDraft ? state.drafts[q.id] : (blank(state.answers[q.id]) ? '' : state.answers[q.id]);
     $('q-confirm').disabled = blank(input.value);
     form.onsubmit = function (ev) {
       ev.preventDefault();

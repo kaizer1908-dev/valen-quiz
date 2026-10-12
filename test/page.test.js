@@ -1156,6 +1156,49 @@ test('C29 run: states written by the previous build (stage quiz) map to the quiz
   }
 });
 
+test('C29 run: a replacement typed after returning to a confirmed answer survives Back/forward and a reload, also when emptied; confirming it shows the replacement later', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData()) : new Promise(() => {})));
+  const local = makeStorage();
+  const h = boot({ fetch: f, local });
+  await settle();
+  await fillInfo(h); await pickConcern(h, [0]);
+  h.type(h.byId['q-answer'], '차별화'); await click(h, 'q-confirm');
+  assert.deepStrictEqual(h.page(), ['p-quiz-note']);
+  await click(h, 'back-quiz-note');
+  assert.strictEqual(h.byId['q-answer'].value, '차별화');
+  // (a) replace without 확인, go back to the concern note and forward again
+  h.type(h.byId['q-answer'], '새답');
+  await click(h, 'back-quiz'); await click(h, 'concern-note-next');
+  assert.deepStrictEqual(h.page(), ['p-quiz']);
+  assert.strictEqual(h.byId['q-answer'].value, '새답', 'the replacement, not the old answer');
+  assert.strictEqual(h.byId['q-confirm'].disabled, false);
+  // (b) reload
+  const h2 = boot({ fetch: f, local }); await settle();
+  assert.deepStrictEqual(h2.page(), ['p-quiz']);
+  assert.strictEqual(h2.byId['q-answer'].value, '새답');
+  // emptied: the input stays empty and 확인 stays disabled, after Back/forward and after a reload
+  h2.type(h2.byId['q-answer'], '');
+  assert.strictEqual(h2.byId['q-confirm'].disabled, true);
+  await click(h2, 'back-quiz'); await click(h2, 'concern-note-next');
+  assert.strictEqual(h2.byId['q-answer'].value, '', 'an emptied input does not bring the old answer back');
+  assert.strictEqual(h2.byId['q-confirm'].disabled, true);
+  const h3 = boot({ fetch: f, local }); await settle();
+  assert.deepStrictEqual(h3.page(), ['p-quiz']);
+  assert.strictEqual(h3.byId['q-answer'].value, '');
+  assert.strictEqual(h3.byId['q-confirm'].disabled, true);
+  // confirming a replacement: the note, and every later return shows the replacement
+  h3.type(h3.byId['q-answer'], '최종'); await click(h3, 'q-confirm');
+  assert.deepStrictEqual(h3.page(), ['p-quiz-note']);
+  assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).drafts['q1'], undefined, 'the draft is dropped on 확인');
+  await click(h3, 'back-quiz-note');
+  assert.strictEqual(h3.byId['q-answer'].value, '최종');
+  await click(h3, 'back-quiz'); await click(h3, 'concern-note-next');
+  assert.strictEqual(h3.byId['q-answer'].value, '최종');
+  const h4 = boot({ fetch: f, local }); await settle();
+  assert.deepStrictEqual(h4.page(), ['p-quiz']);
+  assert.strictEqual(h4.byId['q-answer'].value, '최종');
+});
+
 // ============================================================================================ run: Codex review (C24)
 const DEVICE_KEY = 'valen-quiz:device';
 const DEVICE_ID = 'dev-0000-aaaa-bbbb-cccc';
