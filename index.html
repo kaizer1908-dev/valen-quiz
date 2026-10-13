@@ -88,7 +88,14 @@
   .intro .back { color: #091550; }
   .intro-body { padding-top: 12vh; }
   .intro h2 { font-size: 28px; font-weight: 800; line-height: 1.35; margin: 0 0 28px; }
-  .intro h2.note-text { font-size: 16px; line-height: 1.5; font-weight: 700; margin: 0 0 36px; }
+  /* Note screens (concern note, quiz note): big bold text upper-middle, the image, the button, the logo at the bottom. */
+  .note { display: flex; flex-direction: column; min-height: calc(100vh - 82px); min-height: calc(100dvh - 82px); }
+  .note-body { flex: 1 0 auto; }
+  .note .intro-body { padding-top: 4vh; }
+  .intro h2.note-text { font-size: clamp(15px, 6vw, 24px); line-height: 1.5; font-weight: 700; margin: 0 0 28px; }
+  .intro h2.note-text.note-lg { font-size: clamp(18px, 8vw, 30px); line-height: 1.45; }
+  .note-img { display: block; width: 85%; height: auto; margin: 0 auto 28px; }
+  .note-logo { display: block; width: 150px; height: auto; margin: 24px auto 0; }
   /* The two numbered rows are one left-aligned block (circles in one column, texts at one left edge), centered as a whole. */
   .intro .steps { width: fit-content; margin: 0 auto; text-align: left; }
   .intro .step { display: flex; justify-content: flex-start; align-items: center; gap: 12px; margin: 0 0 14px; font-size: 18px; font-weight: 600; }
@@ -155,12 +162,14 @@
     <button type="button" class="cta" id="concern-next" data-testid="concern-next" disabled>다음으로</button>
   </section>
   <!-- 3b. Concern note: the 17:00 line on a screen of its own, same look as the intro. -->
-  <section class="page intro" id="p-concern-note" hidden>
+  <section class="page intro note" id="p-concern-note" hidden>
     <button type="button" class="back" id="back-concern-note" data-testid="back">이전으로</button>
-    <div class="intro-body">
-      <h2 class="note-text">오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다</h2>
+    <div class="intro-body note-body">
+      <h2 class="note-text note-lg">오후 5시, session3<br>첫번째 강연에서 해결책을<br>제시해드립니다</h2>
+      <img class="note-img" id="concern-note-img" src="assets/session-schedule.webp" alt="3부 세션 일정 17:00-17:20 2300% 매출 성장을 만든, 뷰티 업계 상위 1% 차별화 사고법 발렌라이프 최가희 대표" width="720" height="493" onerror="this.hidden = true">
       <button type="button" class="cta" id="concern-note-next" data-testid="concern-note-next">다음으로</button>
     </div>
+    <img class="note-logo" src="assets/valen-logo.webp" alt="valen" width="400" height="120" onerror="this.hidden = true">
   </section>
   <!-- 4. Quiz (the question comes from the Sheet or from defaults.js); the answer stays on the device -->
   <section class="page" id="p-quiz" hidden>
@@ -177,12 +186,14 @@
     </form>
   </section>
   <!-- 4b. Quiz note: only the explanation, same look as the intro. -->
-  <section class="page intro" id="p-quiz-note" hidden>
+  <section class="page intro note" id="p-quiz-note" hidden>
     <button type="button" class="back" id="back-quiz-note" data-testid="back">이전으로</button>
-    <div class="intro-body">
+    <div class="intro-body note-body">
       <h2 class="note-text" id="qn-text" data-testid="qn-text"></h2>
+      <img class="note-img" id="quiz-note-img" src="assets/speaker-thumb.webp" alt="2300% 매출 성장을 만든, 뷰티 업계 상위 1% 차별화 사고법 발렌라이프 최가희 대표" width="635" height="735" onerror="this.hidden = true">
       <button type="button" class="cta" id="q-next" data-testid="q-next">참여 완료</button>
     </div>
+    <img class="note-logo" src="assets/valen-logo.webp" alt="valen" width="400" height="120" onerror="this.hidden = true">
   </section>
   <!-- Waiting for config (at most 5 s, then the embedded question is used) -->
   <section class="page" id="p-wait" hidden><h2 class="sr-only">Valen Lucky Quiz</h2><div class="spinner"></div></section>
@@ -207,8 +218,8 @@
     </div>
   </section>
 </main>
-<script src="defaults.js?v=2026-10-12.2"></script>
-<script src="quiz-core.js?v=2026-10-12.2"></script>
+<script src="defaults.js?v=2026-10-13.1"></script>
+<script src="quiz-core.js?v=2026-10-13.1"></script>
 <script>
 // Safety net, registered before the app script so even a syntax error in it ends in a message, not a blank page.
 (function () {

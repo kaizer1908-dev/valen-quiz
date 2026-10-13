@@ -92,7 +92,7 @@ test('F2 page: the first screen carries the team title, fields, consent text and
   assert.ok(!/consent-marketing|마케팅/.test(markup), 'no marketing checkbox');
   assert.ok(/<title>Valen Lucky Quiz<\/title>/.test(html));
   // the concern step and the quiz screen use the team copy
-  ['당신의 브랜드 또는 제품의 고민을 선택해주세요.', '(중복체크 가능)', '오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다', '힌트 :', '참여 완료']
+  ['당신의 브랜드 또는 제품의 고민을 선택해주세요.', '(중복체크 가능)', '오후 5시, session3', '첫번째 강연에서 해결책을', '제시해드립니다', '힌트 :', '참여 완료']
     .forEach((t) => assert.ok(markup.includes(t), 'missing: ' + t));
 });
 
@@ -223,7 +223,7 @@ test('C28 page: the final screen has only the pill, gift, thanks, show-the-scree
   assert.ok(/\.ticket \.gift \{ width: 72%; max-width: 300px;/.test(html));
 });
 
-test('C28 page: assets are the new transparent WebP files with the declared sizes; build id and ?v= are 2026-10-12.2', () => {
+test('C28 page: assets are the new transparent WebP files with the declared sizes; build id and ?v= are 2026-10-13.1', () => {
   function webpInfo(file) {
     const b = fs.readFileSync(path.join(ROOT, 'assets', file));
     assert.strictEqual(b.toString('latin1', 0, 4), 'RIFF');
@@ -236,8 +236,8 @@ test('C28 page: assets are the new transparent WebP files with the declared size
   }
   assert.deepStrictEqual(webpInfo('gift.webp'), { w: 720, h: 720, alpha: true });
   assert.deepStrictEqual(webpInfo('valen-logo.webp'), { w: 400, h: 120, alpha: true });
-  assert.strictEqual(DEFAULTS.build, '2026-10-12.2');
-  assert.ok(html.includes('<script src="defaults.js?v=2026-10-12.2"></script>') && html.includes('<script src="quiz-core.js?v=2026-10-12.2"></script>'));
+  assert.strictEqual(DEFAULTS.build, '2026-10-13.1');
+  assert.ok(html.includes('<script src="defaults.js?v=2026-10-13.1"></script>') && html.includes('<script src="quiz-core.js?v=2026-10-13.1"></script>'));
 });
 
 // ============================================================================================ fake DOM
@@ -517,7 +517,7 @@ test('F2r run: the concern step has no 17:00 line, its button opens the concern 
   assert.strictEqual(JSON.parse(local.map.get(STORE_KEY)).answers.concern, '해외 진출을 준비 중이다 | 크리에이터 협업을 검토 중이다');
   h1.click(h1.byId['concern-next']); await settle();
   assert.deepStrictEqual(h1.page(), ['p-concern-note']);
-  assert.strictEqual(h1.text('p-concern-note').indexOf('오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다') !== -1, true);
+  assert.strictEqual(h1.text('p-concern-note').indexOf('오후 5시, session3첫번째 강연에서 해결책을제시해드립니다') !== -1, true, 'three lines (the page text has no separators between them)');
   // reload at the concern note
   const h2 = boot({ fetch: f, local });
   await settle();
@@ -559,7 +559,7 @@ test('F2r run: the embedded explanation shows offline and the consent collected-
   await h2.advance(5100); // the config fails, then the embedded content is used
   await pickConcern(h2, [0]);
   h2.type(h2.byId['q-answer'], 'x'); h2.click(h2.byId['q-confirm']); await settle();
-  assert.strictEqual(h2.text('qn-text'), '80개 브랜드 데이터 기반으로 쌓은 Insight 와' + String.fromCharCode(10) + 'Valen Agent 를 오후 5시에서 보실 수 있습니다.');
+  assert.strictEqual(h2.text('qn-text'), '80개 브랜드 데이터 기반으로 쌓은' + String.fromCharCode(10) + 'Insight 와 Valen Agent 를' + String.fromCharCode(10) + '오후 5시에 보실 수 있습니다.');
   assert.ok(h2.byId['p-info'].textContent.indexOf(LIVE_COLLECTED) === -1);
 });
 
@@ -874,7 +874,7 @@ test('C28 run: the embedded quiz question is the final one and the quiz answer i
   assert.ok(h.text('q-hint').indexOf('힌트 :') !== -1);
   h.type(h.byId['q-answer'], '차별화'); h.click(h.byId['q-confirm']); await settle();
   assert.deepStrictEqual(h.page(), ['p-quiz-note']);
-  assert.strictEqual(h.text('qn-text'), '80개 브랜드 데이터 기반으로 쌓은 Insight 와' + String.fromCharCode(10) + 'Valen Agent 를 오후 5시에서 보실 수 있습니다.');
+  assert.strictEqual(h.text('qn-text'), '80개 브랜드 데이터 기반으로 쌓은' + String.fromCharCode(10) + 'Insight 와 Valen Agent 를' + String.fromCharCode(10) + '오후 5시에 보실 수 있습니다.');
   h.click(h.byId['q-next']); await settle();
   assert.deepStrictEqual(h.page(), ['p-saving'], '참여 완료 on the quiz note saves');
   const body = f.posts('submit')[0];
@@ -978,14 +978,14 @@ test('C29 page: Back control on the five middle screens only; intro rows share o
   assert.ok(/\.intro \{ text-align: center;/.test(html));
   // concern note: only the 17:00 line and the button
   const cn = section('p-concern-note');
-  assert.strictEqual(squash(cn), '이전으로 오후 5시, session3, 첫번째 강연에서 해결책을 제시해드립니다 다음으로');
-  assert.ok(/class="page intro"/.test(markup.match(/<section[^>]*id="p-concern-note"[^>]*>/)[0]), 'same look as the intro');
+  assert.strictEqual(squash(cn.replace(/<br>/g, ' ')), '이전으로 오후 5시, session3 첫번째 강연에서 해결책을 제시해드립니다 다음으로');
+  assert.ok(/class="page intro note"/.test(markup.match(/<section[^>]*id="p-concern-note"[^>]*>/)[0]), 'same look as the intro');
   assert.strictEqual(section('p-concern').indexOf('오후 5시'), -1);
   assert.strictEqual(markup.indexOf('concern-hint'), -1);
   // quiz note: only the explanation (filled by the page) and the button; the quiz screen has no explanation box
   const qn = section('p-quiz-note');
   assert.strictEqual(squash(qn), '이전으로 참여 완료');
-  assert.ok(/class="page intro"/.test(markup.match(/<section[^>]*id="p-quiz-note"[^>]*>/)[0]));
+  assert.ok(/class="page intro note"/.test(markup.match(/<section[^>]*id="p-quiz-note"[^>]*>/)[0]));
   assert.ok(!/q-feedback|class="explain"/.test(markup), 'no explanation box on the quiz screen');
   assert.ok(/\.intro h2\.note-text \{[^}]*\}/.test(html));
   assert.strictEqual(squash(section('p-quiz')).indexOf('참여 완료'), -1);
@@ -1197,6 +1197,70 @@ test('C29 run: a replacement typed after returning to a confirmed answer survive
   const h4 = boot({ fetch: f, local }); await settle();
   assert.deepStrictEqual(h4.page(), ['p-quiz']);
   assert.strictEqual(h4.byId['q-answer'].value, '최종');
+});
+
+// ============================================================================================ C30: images on the note screens
+function webpSize(file) {
+  const b = fs.readFileSync(path.join(ROOT, 'assets', file));
+  assert.strictEqual(b.toString('latin1', 0, 4), 'RIFF', file);
+  assert.strictEqual(b.toString('latin1', 8, 12), 'WEBP', file);
+  const kind = b.toString('latin1', 12, 16);
+  if (kind === 'VP8X') { return { w: b.readUIntLE(24, 3) + 1, h: b.readUIntLE(27, 3) + 1 }; }
+  if (kind === 'VP8L') { const v = b.readUInt32LE(21); return { w: (v & 0x3fff) + 1, h: ((v >> 14) & 0x3fff) + 1 }; }
+  assert.strictEqual(kind, 'VP8 ', file);
+  return { w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
+}
+
+test('C30 page: the two note screens carry their image (size, alt), the three text lines, the logo and keep Back and the button', () => {
+  assert.deepStrictEqual(webpSize('session-schedule.webp'), { w: 720, h: 493 });
+  assert.deepStrictEqual(webpSize('speaker-thumb.webp'), { w: 635, h: 735 });
+  const cn = section('p-concern-note');
+  const qn = section('p-quiz-note');
+  const ALT_SCHEDULE = '3부 세션 일정 17:00-17:20 2300% 매출 성장을 만든, 뷰티 업계 상위 1% 차별화 사고법 발렌라이프 최가희 대표';
+  const ALT_SPEAKER = '2300% 매출 성장을 만든, 뷰티 업계 상위 1% 차별화 사고법 발렌라이프 최가희 대표';
+  assert.ok(cn.includes('<img class="note-img" id="concern-note-img" src="assets/session-schedule.webp" alt="' + ALT_SCHEDULE + '" width="720" height="493"'));
+  assert.ok(qn.includes('<img class="note-img" id="quiz-note-img" src="assets/speaker-thumb.webp" alt="' + ALT_SPEAKER + '" width="635" height="735"'));
+  // concern note: the three lines of the heading, in order, as one heading with line breaks
+  assert.ok(/<h2 class="note-text note-lg">오후 5시, session3<br>첫번째 강연에서 해결책을<br>제시해드립니다<\/h2>/.test(cn));
+  // order on both screens: Back, text, image, button, logo
+  [cn, qn].forEach((sec, i) => {
+    const at = ['class="back"', '<h2', '<img class="note-img"', '<button type="button" class="cta"', '<img class="note-logo" src="assets/valen-logo.webp" alt="valen" width="400" height="120"'].map((t) => sec.indexOf(t));
+    assert.ok(at.every((x) => x !== -1), 'screen ' + i + ' is missing a part: ' + at);
+    assert.deepStrictEqual(at.slice().sort((a, b) => a - b), at, 'screen ' + i + ' order: Back, text, image, button, logo');
+  });
+  // a failed image or logo disappears instead of leaving a broken box; the text and the button do not depend on it
+  assert.strictEqual((markup.match(/onerror="this\.hidden = true"/g) || []).length, 4, 'both images and both logos hide themselves on error');
+  // sizes: the concern note heading up to 30px, the quiz note text 22-24px, both scaled with the width so a line never re-wraps
+  assert.ok(/\.intro h2\.note-text\.note-lg \{ font-size: clamp\(18px, 8vw, 30px\);/.test(html));
+  assert.ok(/\.intro h2\.note-text \{ font-size: clamp\(15px, 6vw, 24px\);[^}]*font-weight: 700/.test(html));
+  assert.ok(/\.note-img \{[^}]*width: 85%; height: auto;/.test(html), 'the image is 85% of the content width');
+  assert.ok(/\.note \{ display: flex; flex-direction: column; min-height:/.test(html) && /\.note-logo \{[^}]*width: 150px/.test(html), 'the logo sits at the bottom');
+  assert.strictEqual(DEFAULTS.embedded.questions[0].explanation.split(String.fromCharCode(10)).length, 3);
+});
+
+test('C30 run: both note screens show the new text lines and logo; Back and the buttons keep working', async () => {
+  const f = fakeFetch((url, init) => (init.method === 'GET' ? env(cfgData({ questions: [] })) : new Promise(() => {})));
+  const h = boot({ fetch: f });
+  await settle();
+  await fillInfo(h); await pickConcernOnly(h, [0]);
+  assert.deepStrictEqual(h.page(), ['p-concern-note']);
+  const logos = (id) => h.byId[id].all().filter((e) => e.tagName === 'img' && (e.attrs.src || '').indexOf('valen-logo') !== -1);
+  assert.strictEqual(logos('p-concern-note').length, 1);
+  assert.strictEqual(h.byId['concern-note-img'].attrs.src, 'assets/session-schedule.webp');
+  await click(h, 'back-concern-note');
+  assert.deepStrictEqual(h.page(), ['p-concern']);
+  await click(h, 'concern-next'); await click(h, 'concern-note-next');
+  assert.deepStrictEqual(h.page(), ['p-quiz']);
+  h.type(h.byId['q-answer'], '차별화'); await click(h, 'q-confirm');
+  assert.deepStrictEqual(h.page(), ['p-quiz-note']);
+  assert.strictEqual(h.text('qn-text'), '80개 브랜드 데이터 기반으로 쌓은' + String.fromCharCode(10) + 'Insight 와 Valen Agent 를' + String.fromCharCode(10) + '오후 5시에 보실 수 있습니다.');
+  assert.strictEqual(h.byId['quiz-note-img'].attrs.src, 'assets/speaker-thumb.webp');
+  assert.strictEqual(logos('p-quiz-note').length, 1);
+  assert.strictEqual(h.text('q-next'), '참여 완료');
+  await click(h, 'back-quiz-note');
+  assert.deepStrictEqual(h.page(), ['p-quiz']);
+  await click(h, 'q-confirm'); await click(h, 'q-next');
+  assert.deepStrictEqual(h.page(), ['p-saving'], '참여 완료 still saves');
 });
 
 // ============================================================================================ run: Codex review (C24)

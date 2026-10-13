@@ -596,8 +596,8 @@ test('F1 config: server content only when contentReady with questions, else embe
     '- 귀하는 개인정보 수집 및 이용에 대한 동의를 거부할 권리가 있습니다. 단, 필수 항목 동의 거부 시 이벤트 참여 및 경품 수령이 제한됩니다.'
   ].join(String.fromCharCode(10)));
   assert.strictEqual(emb.consent.version, 'a-day-2026-v3', 'the consent version is v3 (C28)');
-  assert.strictEqual(DEFAULTS.build, '2026-10-12.2', 'the build id (C29)');
-  assert.strictEqual(emb.questions[0].explanation, '80개 브랜드 데이터 기반으로 쌓은 Insight 와' + String.fromCharCode(10) + 'Valen Agent 를 오후 5시에서 보실 수 있습니다.', 'a line break after "Insight 와" (C29)');
+  assert.strictEqual(DEFAULTS.build, '2026-10-13.1', 'the build id (C30)');
+  assert.strictEqual(emb.questions[0].explanation, '80개 브랜드 데이터 기반으로 쌓은' + String.fromCharCode(10) + 'Insight 와 Valen Agent 를' + String.fromCharCode(10) + '오후 5시에 보실 수 있습니다.', 'three lines, 5시에 (C30)');
   assert.strictEqual(emb.questions.length, 1);
   assert.strictEqual(emb.questions[0].type, 'text');
   assert.deepStrictEqual(emb.questions[0].accepted, ['차별화']);

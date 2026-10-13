@@ -48,7 +48,7 @@ The API address in `defaults.js` is public by nature and may stay there.
 - `index.html`: screens and wiring (inline CSS and script, ES2017 only).
 - `quiz-core.js`: pure logic (API client for config and submit, phone formatting, validation, storage, routing). Loaded as `window.QuizCore`.
 - `defaults.js`: build id, API address and the embedded fallback question and the team's consent text. Loaded as `window.VALEN_QUIZ_DEFAULTS`.
-- `assets/`: the gift (720x720) and logo (400x120) images of the final screen, transparent WebP.
+- `assets/`: the gift (720x720) and logo (400x120) images of the final screen, transparent WebP; `session-schedule.webp` (720x493) under the concern note and `speaker-thumb.webp` (635x735) under the quiz note (text inside the images comes from the team files; an image that fails to load hides itself and never blocks the text or the button).
 - `test/`: `node --test` suites (`page.test.js` runs the real page scripts against a small fake DOM). No dependencies and no build step.
 
 Both script tags in `index.html` carry the same `?v=<build>` as `defaults.js`. Change all three together when publishing.
