@@ -1234,7 +1234,7 @@ test('C30 page: the two note screens carry their image (size, alt), the three te
   assert.ok(/\.intro h2\.note-text\.note-lg \{ font-size: clamp\(18px, 8vw, 30px\);/.test(html));
   assert.ok(/\.intro h2\.note-text \{ font-size: clamp\(15px, 6vw, 24px\);[^}]*font-weight: 700/.test(html));
   assert.ok(/\.note-img \{[^}]*width: 85%; height: auto;/.test(html), 'the image is 85% of the content width');
-  assert.ok(/\.note \{ display: flex; flex-direction: column; min-height:/.test(html) && /\.note-logo \{[^}]*width: 150px/.test(html), 'the logo sits at the bottom');
+  assert.ok(/\.page\.note \{ display: flex; flex-direction: column; min-height: calc\(100vh - 82px\); min-height: calc\(100dvh - 82px\);/.test(html) && /\.note-logo \{[^}]*width: 150px/.test(html), 'the logo sits at the bottom');
   assert.strictEqual(DEFAULTS.embedded.questions[0].explanation.split(String.fromCharCode(10)).length, 3);
 });
 
@@ -1261,6 +1261,20 @@ test('C30 run: both note screens show the new text lines and logo; Back and the 
   assert.deepStrictEqual(h.page(), ['p-quiz']);
   await click(h, 'q-confirm'); await click(h, 'q-next');
   assert.deepStrictEqual(h.page(), ['p-saving'], '참여 완료 still saves');
+});
+
+test('C30 page: the note-screen layout rule is scoped to the two note sections and never reaches the info form disclosure paragraph', () => {
+  const info = section('p-info');
+  const para = info.match(/<p class="note">[^<]*<\/p>/);
+  assert.ok(para, 'the disclosure paragraph is still on the info form');
+  // every CSS rule whose selector can match an element with class "note" but no class "page" (the paragraph)
+  const rules = html.match(/<style>([\s\S]*?)<\/style>/)[1].split('}').map((r) => r.split('{')).filter((p) => p.length === 2);
+  const reaching = rules.filter(([sel]) => sel.split(',').some((one) => /(^|\s)\.note(?![\w-])/.test(one.trim()) && !/\.page\.note|\.page\s*\.note|\.note\s+[.#\w]/.test(one.trim())));
+  assert.deepStrictEqual(reaching.map(([sel, body]) => sel.trim() + '{' + body.trim() + '}'), ['.note{color: var(--muted); font-size: 13px; margin-top: 14px;}'],
+    'only the small-print rule may match the paragraph; found: ' + reaching.map((r) => r[0].trim()).join(' | '));
+  assert.ok(!/display: flex|min-height/.test(reaching[0][1]), 'no flex or min-height on the paragraph');
+  // the two note sections do carry the layout class as their own
+  ['p-concern-note', 'p-quiz-note'].forEach((id) => assert.ok(/class="page intro note"/.test(markup.match(new RegExp('<section[^>]*id="' + id + '"[^>]*>'))[0])));
 });
 
 // ============================================================================================ run: Codex review (C24)
